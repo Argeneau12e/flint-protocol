@@ -1,0 +1,123 @@
+@import "tailwindcss";
+
+/*
+ * Flint has no visual design system yet — colour, typography, logo and motion
+ * are a separate, human-led track (FLINT_BUILD_CONTEXT.md Section 9). What
+ * exists here is structure: one central place for every visual token, so the
+ * design pass is a swap rather than a rewrite.
+ *
+ * RULE: no component may hardcode a colour, font, radius or page spacing.
+ * Everything user-visible pulls from the variables below.
+ *
+ * TODO-DESIGN: replace the placeholder values in :root with the real palette,
+ * type scale and spacing tokens. Nothing else should need to change.
+ */
+
+:root {
+  --flint-bg: #ffffff;
+  --flint-ink: #111111;
+  --flint-muted: #555555;
+  --flint-line: #d8d8d8;
+  --flint-surface: #f6f6f6;
+  --flint-font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --flint-radius: 6px;
+  --flint-page-x: 1.25rem;
+}
+
+html {
+  background: var(--flint-bg);
+  /* TODO-DESIGN: motion/animation tokens belong here. */
+}
+
+body {
+  color: var(--flint-ink);
+  font-family: var(--flint-font-body);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.flint-header {
+  border-bottom: 1px solid var(--flint-line);
+  padding: 1rem var(--flint-page-x);
+}
+
+.flint-brand {
+  font-weight: 600;
+  margin: 0;
+}
+
+.flint-tagline {
+  color: var(--flint-muted);
+  font-size: 0.875rem;
+  margin: 0.125rem 0 0;
+}
+
+.flint-main {
+  padding: 1.5rem var(--flint-page-x) 3rem;
+}
+
+.flint-shell {
+  margin: 0 auto;
+  max-width: 46rem;
+}
+
+.flint-section {
+  border-top: 1px solid var(--flint-line);
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+}
+
+.flint-muted {
+  color: var(--flint-muted);
+}
+
+.flint-note {
+  background: var(--flint-surface);
+  border: 1px solid var(--flint-line);
+  border-radius: var(--flint-radius);
+  padding: 0.75rem 1rem;
+}
+
+.flint-badge {
+  border: 1px solid var(--flint-line);
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 0.75rem;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.5rem;
+}
+
+.flint-badge-terminal {
+  background: var(--flint-surface);
+  color: var(--flint-muted);
+  font-weight: 600;
+}
+
+.flint-table {
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  width: 100%;
+}
+
+.flint-table caption {
+  color: var(--flint-muted);
+  font-size: 0.875rem;
+  padding-bottom: 0.5rem;
+  text-align: left;
+}
+
+.flint-table th,
+.flint-table td {
+  border-bottom: 1px solid var(--flint-line);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.flint-list {
+  padding-left: 1.1rem;
+}
+
+.flint-list li {
+  margin: 0.15rem 0;
+}

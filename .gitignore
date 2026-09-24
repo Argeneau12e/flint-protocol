@@ -1,0 +1,32 @@
+# Flint is devnet-only (FLINT_BUILD_CONTEXT.md Sections 6.3 / 12).
+# Nothing here should ever contain a mainnet key or point at mainnet.
+
+# --- Rust / Anchor build output ---
+target/
+.anchor/
+test-ledger/
+*.so
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# --- Secrets ---
+# env files and keypairs never get committed (devnet-only, but still)
+.env
+.env.*
+!.env.example
+*-keypair.json
+id.json
+programs/*/target/deploy/*-keypair.json
+
+# --- Editor / OS / logs ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+npm-debug.log*

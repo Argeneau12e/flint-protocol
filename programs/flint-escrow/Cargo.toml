@@ -1,0 +1,33 @@
+[package]
+name = "flint-escrow"
+version = "0.1.0"
+description = "Flint escrow program — reference Solana adapter for FRS-1 (devnet only)"
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "flint_escrow"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+
+[dependencies]
+# Pinned EXACTLY to the Anchor CLI installed on this machine (1.1.2), so Phase 0
+# and Phase 1 need no new Anchor download. A caret requirement such as "1.1.2"
+# would resolve to 1.2.0, silently mixing a 1.2.0 crate with a 1.1.2 CLI.
+# If 1.1.2 proves incompatible at the first real SBF build (Phase 1), surface it
+# then and decide — do not bump this silently.
+anchor-lang = "=1.1.2"
+
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
