@@ -1,3 +1,14 @@
+/**
+ * Flint's front door.
+ *
+ * Two jobs, and it says both out loud: explain the FRS-1 boundary in one place
+ * (the schema, the state machine, what is deliberately not implemented), and point
+ * at the two things you can actually *do* right now — run the test agent against the
+ * priced endpoint, or verify a receipt. Structure only; the design track owns
+ * everything visual (FLINT_BUILD_CONTEXT.md Section 9).
+ */
+
+import Link from "next/link";
 import {
   FRS1_ENFORCED_CONDITION_TYPES,
   FRS1_FIELDS,
@@ -5,15 +16,6 @@ import {
   FRS1_TERMINAL_STATUSES,
 } from "@/lib/frs1-types";
 import { CLUSTER, RPC_URL } from "@/lib/solana";
-
-/**
- * Phase 0 boot check.
- *
- * This page exists to prove the app boots, the FRS-1 TypeScript types compile,
- * and the schema the whole build rests on is legible in one place. It is not a
- * demo: no agreement can be created, funded or settled yet, and it says so
- * plainly rather than showing controls that do nothing.
- */
 
 const BOUNDARY_YES = [
   "fixed amount and fixed asset",
@@ -34,24 +36,30 @@ const BOUNDARY_NO = [
 ];
 
 const NOT_BUILT_YET = [
-  "escrow program instructions (create / fund / release / refund / cancel / flag_dispute)",
-  "threat-model tests: 0 of the 7 required tests exist",
-  "wallet connect, funding, release and refund flows",
-  "agreement and verification pages that read from chain",
-  "the x402 responder and policy engine for the agent flow",
+  "the human flow: the Blink landing page and wallet connect (Phase 3)",
+  "a listing of live agreements, and anything that touches mainnet (Phase 4)",
+  "a facilitator: the x402 envelope is real, but settlement is FRS-1 escrow, verified by recomputation from chain rather than by a facilitator's word",
 ];
 
 export default function HomePage() {
   return (
     <div className="flint-shell">
-      <h1 className="text-2xl font-semibold">Phase 0 — scaffold and types</h1>
+      <h1 className="text-2xl font-semibold">Flint — FRS-1 payment agreements</h1>
       <p className="flint-muted mt-2">
-        Flint is a payment-agreement protocol (FRS-1) on Solana: an escrowed,
-        expiring agreement with a deterministic settlement path and an on-chain
-        verifiable receipt. This build is at Phase 0 of 5 — repository scaffold,
-        tooling, devnet configuration, and the FRS-1 types in both Rust and
-        TypeScript.
+        An escrowed, expiring payment agreement on Solana: a fixed amount, a fixed
+        asset, a real escrow, an expiry, and a settlement you can verify afterwards
+        from the chain. This build is at Phase 2 of 5 — the escrow program and the
+        agent/x402 flow work end to end on devnet.
       </p>
+
+      <nav aria-label="Try it" className="mt-4 flex flex-wrap gap-3">
+        <Link className="flint-button" href="/agent">
+          Run the test agent
+        </Link>
+        <Link className="flint-button" href="/verify/">
+          Verify a receipt
+        </Link>
+      </nav>
 
       {/* TODO-DESIGN: status/progress indicator slot. */}
       <section className="flint-section" aria-labelledby="boundary-heading">
@@ -187,7 +195,7 @@ export default function HomePage() {
           Not built yet
         </h2>
         <p className="flint-muted mt-1 text-sm">
-          Listed so this page cannot be mistaken for a working product:
+          Listed so this page cannot be mistaken for a finished product.
         </p>
         <ul className="flint-list flint-muted mt-2">
           {NOT_BUILT_YET.map((item) => (
@@ -195,8 +203,9 @@ export default function HomePage() {
           ))}
         </ul>
         <p className="flint-note mt-4 text-sm">
-          Next: Phase 1 — the escrow program, with all seven threat-model
-          invariants covered by tests that try to violate them.
+          Next: Phase 3 — the human flow. A freelancer shares an agreement as a
+          Solana Blink; the client pays the same escrow program the agent pays, and
+          both receipts verify the same way.
         </p>
       </section>
 

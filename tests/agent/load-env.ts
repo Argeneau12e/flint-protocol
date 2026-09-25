@@ -1,0 +1,36 @@
+/**
+ * Loads `app/.env.local` into `process.env` before the agent tests run.
+ *
+ * Next.js loads it for the app; plain node does not, and these tests deliberately
+ * exercise the *same* modules the app does — so without this, the tests would run
+ * against a different configuration than the app and could pass for the wrong
+ * reason.
+ *
+ * No `dotenv` dependency: this repo's env files are plain `KEY=value` lines, and
+ * that is all this needs to parse. Existing environment variables always win, so
+ * a CI secret is never overwritten by a local file.
+ *
+ * `process.cwd()` rather than `__dirname`: these files are loaded as ES modules
+ * (Node's own type stripping), where `__dirname` does not exist. Mocha is always
+ * run from the repo root, so the cwd is the right base either way.
+ */
+
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const repoRoot = process.cwd();
+
+for (const file of [resolve(repoRoot, "app", ".env.local"), resolve(repoRoot, "app", ".env")]) {
+  if (!existsSync(file)) continue;
+  for (const raw of readFileSync(file, "utf8").split("\n")) {
+    const line = raw.trim();
+    if (line === "" || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    const value = line.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+    if (process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+}

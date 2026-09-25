@@ -1,0 +1,887 @@
+{
+  "address": "ziZiaCVcDaenoUP7jHdEPk4R2XJ8zeY5UbMPKFuqZxE",
+  "metadata": {
+    "name": "flint_escrow",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Flint escrow program — reference Solana adapter for FRS-1 (devnet only)"
+  },
+  "instructions": [
+    {
+      "name": "cancel",
+      "docs": [
+        "Recipient withdraws before funding (`Pending` → `Cancelled`, account",
+        "closed, rent back to the recipient)."
+      ],
+      "discriminator": [
+        232,
+        219,
+        223,
+        41,
+        219,
+        236,
+        220,
+        190
+      ],
+      "accounts": [
+        {
+          "name": "recipient",
+          "docs": [
+            "The proposer, and the only signer allowed here."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "agreement",
+          "docs": [
+            "Closed by Anchor at the end of the instruction: the rent goes back to the",
+            "recipient (Section 4.6). Closing also frees the (recipient, id) pair, so",
+            "a cancelled agreement can be re-proposed under the same uuid."
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_token_account",
+          "docs": [
+            "The (empty) escrow token account, closed too so its rent is not stranded",
+            "and the ATA does not block a future re-proposal of the same uuid.",
+            "",
+            "Declared as an `AccountInfo` on purpose: the SPL `close_account` CPI",
+            "deactivates the account, and Anchor re-serializing a closed",
+            "`Account<'_, TokenAccount>` at exit would fail. Every property this",
+            "account must have is therefore checked in the handler instead.",
+            "",
+            "`escrow_address`, owned by the SPL Token program, controlled by this",
+            "agreement PDA, denominated in the stored asset, and empty — before it is",
+            "closed."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create",
+      "docs": [
+        "Recipient proposes an agreement (no state → `Pending`)."
+      ],
+      "discriminator": [
+        24,
+        30,
+        200,
+        40,
+        5,
+        28,
+        7,
+        119
+      ],
+      "accounts": [
+        {
+          "name": "recipient",
+          "docs": [
+            "The proposer: pays for both new accounts and signs the terms."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "agreement",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  114,
+                  101,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "recipient"
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset",
+          "docs": [
+            "The SPL mint the agreement is denominated in (FRS-1 `asset`)."
+          ]
+        },
+        {
+          "name": "escrow_ata",
+          "docs": [
+            "The escrow token account. Section 4.5: a separate ATA from the PDA, owned",
+            "(as an SPL account) by the agreement PDA — which is why only this program",
+            "can move what goes into it."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "agreement"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "asset"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": {
+            "array": [
+              "u8",
+              16
+            ]
+          }
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "expires_at",
+          "type": "i64"
+        },
+        {
+          "name": "condition_type",
+          "type": {
+            "defined": {
+              "name": "ConditionType"
+            }
+          }
+        },
+        {
+          "name": "condition_description",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "memo",
+          "type": "string"
+        },
+        {
+          "name": "handle",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "agent_policy",
+          "type": {
+            "option": {
+              "defined": {
+                "name": "AgentPolicy"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "flag_dispute",
+      "docs": [
+        "Recipient sets or clears the advisory dispute flag (`Funded` →",
+        "`Funded`). `disputed` is explicit rather than a toggle, so repeats are",
+        "idempotent and the flag cannot flip by accident."
+      ],
+      "discriminator": [
+        150,
+        222,
+        78,
+        72,
+        117,
+        140,
+        2,
+        75
+      ],
+      "accounts": [
+        {
+          "name": "recipient",
+          "docs": [
+            "The proposer: the flag is theirs to raise and clear (Section 4.2)."
+          ],
+          "signer": true
+        },
+        {
+          "name": "agreement",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "disputed",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "fund",
+      "docs": [
+        "First funder deposits the full amount (`Pending` → `Funded`) and becomes",
+        "`payerAddress`, permanently."
+      ],
+      "discriminator": [
+        218,
+        188,
+        111,
+        221,
+        152,
+        113,
+        174,
+        7
+      ],
+      "accounts": [
+        {
+          "name": "funder",
+          "docs": [
+            "Becomes `payerAddress`; must own `funder_token_account`."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "agreement",
+          "writable": true
+        },
+        {
+          "name": "funder_token_account",
+          "docs": [
+            "The funder's source token account, denominated in the agreement's asset."
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_token_account",
+          "docs": [
+            "The agreement's escrow ATA; validated against stored state, never trusted."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "refund",
+      "docs": [
+        "Permissionless crank after expiry (`Funded` → `Refunded`); funds go to",
+        "the stored payer, never to the caller."
+      ],
+      "discriminator": [
+        2,
+        96,
+        183,
+        251,
+        63,
+        208,
+        46,
+        46
+      ],
+      "accounts": [
+        {
+          "name": "cranker",
+          "docs": [
+            "Anyone can crank the refund. This signer only pays the transaction fee —",
+            "it is never the beneficiary, which is why the account is not called",
+            "\"payer\": naming it that would invite exactly the confusion row 1 exists",
+            "to prevent."
+          ],
+          "signer": true
+        },
+        {
+          "name": "agreement",
+          "writable": true
+        },
+        {
+          "name": "escrow_token_account",
+          "writable": true
+        },
+        {
+          "name": "payer_token_account",
+          "docs": [
+            "The stored payer's token account; validated against `payer_address`."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "release",
+      "docs": [
+        "The stored payer confirms the condition is met (`Funded` → `Released`)."
+      ],
+      "discriminator": [
+        253,
+        249,
+        15,
+        206,
+        28,
+        127,
+        193,
+        241
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Must be the agreement's **stored** `payerAddress` (row 1). The recipient",
+            "cannot release, and neither can anyone else."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "agreement",
+          "writable": true
+        },
+        {
+          "name": "escrow_token_account",
+          "writable": true
+        },
+        {
+          "name": "recipient_token_account",
+          "docs": [
+            "The recipient's token account for the agreement's asset. Validated",
+            "against the stored `recipient_address` — never trusted (row 2)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "FlintAgreement",
+      "discriminator": [
+        114,
+        196,
+        58,
+        100,
+        83,
+        70,
+        70,
+        127
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "RecipientOnly",
+      "msg": "Only the agreement's recipient can perform this action."
+    },
+    {
+      "code": 6001,
+      "name": "PayerOnly",
+      "msg": "Only the agreement's stored payerAddress can release it."
+    },
+    {
+      "code": 6002,
+      "name": "NotPending",
+      "msg": "This agreement is not pending."
+    },
+    {
+      "code": 6003,
+      "name": "NotFunded",
+      "msg": "This agreement is not funded."
+    },
+    {
+      "code": 6004,
+      "name": "NotDisputable",
+      "msg": "The dispute flag applies only to a funded agreement; pending and settled agreements are not disputable."
+    },
+    {
+      "code": 6005,
+      "name": "ExpiryNotInFuture",
+      "msg": "expiresAt must be strictly in the future when the agreement is created."
+    },
+    {
+      "code": 6006,
+      "name": "ExpiredBeforeFunding",
+      "msg": "This agreement expired before it was funded, so it could never be released."
+    },
+    {
+      "code": 6007,
+      "name": "Expired",
+      "msg": "This agreement has expired — only refund remains valid."
+    },
+    {
+      "code": 6008,
+      "name": "NotYetExpired",
+      "msg": "This agreement has not expired yet; it cannot be refunded."
+    },
+    {
+      "code": 6009,
+      "name": "ZeroAmount",
+      "msg": "The amount must be greater than zero."
+    },
+    {
+      "code": 6010,
+      "name": "UnsupportedConditionType",
+      "msg": "v1 enforces only the manual-confirmation condition; oracle-attested is not implemented."
+    },
+    {
+      "code": 6011,
+      "name": "FieldTooLong",
+      "msg": "A field exceeds its FRS-1 length bound (Section 4.6)."
+    },
+    {
+      "code": 6012,
+      "name": "AgreementPdaMismatch",
+      "msg": "The agreement account is not the canonical PDA for its stored id and recipientAddress."
+    },
+    {
+      "code": 6013,
+      "name": "EscrowMismatch",
+      "msg": "The provided token account is not the agreement's stored escrowAddress."
+    },
+    {
+      "code": 6014,
+      "name": "AssetMismatch",
+      "msg": "The token account's mint does not match the agreement's asset."
+    },
+    {
+      "code": 6015,
+      "name": "TokenAccountOwnerMismatch",
+      "msg": "The token account's owner does not match the wallet the agreement requires."
+    },
+    {
+      "code": 6016,
+      "name": "FunderTokenAccountMismatch",
+      "msg": "The funder's token account is not owned by the funding signer."
+    }
+  ],
+  "types": [
+    {
+      "name": "AgentPolicy",
+      "docs": [
+        "FRS-1 `agentPolicy` — optional, for autonomous payers (Section 6.2).",
+        "",
+        "Evaluated off-chain by the deterministic policy engine (no LLM anywhere in",
+        "the pay/no-pay decision path); the program stores it but does not enforce it."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "spend_cap",
+            "docs": [
+              "FRS-1 `spendCap`, in `asset` base units."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "allowlist",
+            "docs": [
+              "FRS-1 `allowlist` — permitted recipient addresses."
+            ],
+            "type": {
+              "vec": "pubkey"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "AgreementStatus",
+      "docs": [
+        "Lifecycle of an FRS-1 agreement (Section 4.2).",
+        "",
+        "- `Pending` → `Funded`    : first funder deposits the full `amount`; that",
+        "address becomes `payerAddress`, permanently.",
+        "- `Pending` → `Cancelled` : recipient only (no payer exists yet).",
+        "- `Funded`  → `Released`  : payer-signed confirmation only.",
+        "- `Funded`  → `Refunded`  : after `expiresAt`, permissionless crank; funds",
+        "always go to the stored payer, never the caller.",
+        "- `Released` / `Refunded` : terminal — nothing transitions out."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Pending"
+          },
+          {
+            "name": "Funded"
+          },
+          {
+            "name": "Released"
+          },
+          {
+            "name": "Refunded"
+          },
+          {
+            "name": "Cancelled"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Condition",
+      "docs": [
+        "FRS-1 `condition` — `{ type, description }` (Sections 4.1 / 4.3)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "condition_type",
+            "docs": [
+              "Serialized as FRS-1's `type` field. The Rust identifier differs only",
+              "because `type` is a Rust keyword; the TypeScript side uses `type`."
+            ],
+            "type": {
+              "defined": {
+                "name": "ConditionType"
+              }
+            }
+          },
+          {
+            "name": "description",
+            "docs": [
+              "Human-readable only — display text, never a verification mechanism."
+            ],
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ConditionType",
+      "docs": [
+        "The `condition.type` values (Section 4.3).",
+        "",
+        "v1 mechanically enforces exactly one of them. `OracleAttested` is a named",
+        "schema value for future use and **is deliberately not implemented in v1** —",
+        "no instruction may ever treat it as satisfied, and a free-text",
+        "`description` must never gate an on-chain transition.",
+        "",
+        "FRS-1's string form is kebab-case (`\"manual-confirmation\"` /",
+        "`\"oracle-attested\"`); the app layer owns that mapping (Sections 4.1, 4.3)."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "ManualConfirmation"
+          },
+          {
+            "name": "OracleAttested"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FlintAgreement",
+      "docs": [
+        "The FRS-1 agreement account (Section 4.1, field-for-field).",
+        "",
+        "Immutability that follows from Section 4.2: once `status` is no longer",
+        "`Pending`, the term fields (`amount`, `recipient_address`, `asset`,",
+        "`condition`) are never written again — Phase 1 satisfies this by exposing no",
+        "instruction that can write them (threat-model row 6)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "docs": [
+              "FRS-1 `id` — uuid-v4 as 16 raw bytes; also a PDA seed (Section 4.5)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "payer_address",
+            "docs": [
+              "FRS-1 `payerAddress` — the funding wallet.",
+              "",
+              "`None` while pending. It is set once, atomically with the deposit, to",
+              "whoever funds first (open model, first funder wins), and never changes",
+              "afterwards. There is therefore no payer authority on a pending",
+              "agreement (Section 4.2)."
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "recipient_address",
+            "docs": [
+              "FRS-1 `recipientAddress` — set at creation, immutable once funded."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "title",
+            "docs": [
+              "FRS-1 `title`."
+            ],
+            "type": "string"
+          },
+          {
+            "name": "amount",
+            "docs": [
+              "FRS-1 `amount` — `u64` base units, always; never a float, anywhere",
+              "(Section 4.5). No partial settlement: paid in full or not at all."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "asset",
+            "docs": [
+              "FRS-1 `asset` — the SPL token mint `Pubkey`, authoritative. A symbol",
+              "such as \"USDC\" is a display-only app-layer lookup (Section 4.5)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "escrow_address",
+            "docs": [
+              "FRS-1 `escrowAddress` — the **escrow's SPL token account (ATA)**, not",
+              "the agreement PDA. The PDA is state/authority; this ATA holds the",
+              "tokens, with the PDA (or an escrow-authority PDA derived from it) as its",
+              "authority (Section 4.5)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "memo",
+            "docs": [
+              "FRS-1 `memo`."
+            ],
+            "type": "string"
+          },
+          {
+            "name": "expires_at",
+            "docs": [
+              "FRS-1 `expiresAt` — compared against the on-chain Clock sysvar only,",
+              "never an instruction-supplied timestamp (Section 4.5)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "docs": [
+              "FRS-1 `status` (Section 4.2)."
+            ],
+            "type": {
+              "defined": {
+                "name": "AgreementStatus"
+              }
+            }
+          },
+          {
+            "name": "condition",
+            "docs": [
+              "FRS-1 `condition` (Section 4.3)."
+            ],
+            "type": {
+              "defined": {
+                "name": "Condition"
+              }
+            }
+          },
+          {
+            "name": "disputed_flag",
+            "docs": [
+              "FRS-1 `disputedFlag` — advisory only: never moves custody, never blocks",
+              "refund after expiry (Section 4.2). Recipient sets and clears it."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "disputed_at",
+            "docs": [
+              "FRS-1 `disputedAt` — set and cleared alongside `disputed_flag`."
+            ],
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "handle",
+            "docs": [
+              "FRS-1 `handle` — optional, display-only in v1 (Flint.ID is roadmap;",
+              "nothing resolves this yet)."
+            ],
+            "type": {
+              "option": "string"
+            }
+          },
+          {
+            "name": "agent_policy",
+            "docs": [
+              "FRS-1 `agentPolicy` — optional (agent flow)."
+            ],
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "AgentPolicy"
+                }
+              }
+            }
+          },
+          {
+            "name": "receipt_proof",
+            "docs": [
+              "FRS-1 `receiptProof` — the **settlement** (release/refund) transaction",
+              "signature, written when settlement happens (Section 4.4). The funding",
+              "signature is deliberately not stored; that is an accepted gap because it",
+              "is discoverable from the account's on-chain history.",
+              "",
+              "FLAG (raised in Phase 1 — not silently reinterpreted): no instruction",
+              "writes this field, and none ever can. A Solana program cannot read its",
+              "own transaction's signature, so the signature cannot be produced",
+              "on-chain. As implemented, the receipt is the settlement signature the",
+              "*client* observes and records, and its validity is established by",
+              "recomputing status from this account and checking that transaction",
+              "against this program's settlement instruction (Sections 4.4 and 6.2,",
+              "threat-model row 7) — which is the property 4.4 actually asks for. The",
+              "field is retained so the on-chain account stays a subset of the FRS-1",
+              "schema, pending a decision on whether to drop it or replace it with",
+              "something the program *can* write (e.g. the settlement slot).",
+              "",
+              "What a receipt proves: that a specific transition occurred, for a",
+              "specific amount and asset, authorized by the required signer. What it",
+              "does not prove: that the real-world condition was met (Section 4.4)."
+            ],
+            "type": {
+              "option": "string"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

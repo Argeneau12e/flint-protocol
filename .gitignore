@@ -23,6 +23,11 @@ next-env.d.ts
 id.json
 programs/*/target/deploy/*-keypair.json
 
+# Phase 2 (agent flow): the service/agent devnet keypairs and the decision log.
+# The keypairs are devnet throwaways, but a leaked keypair is a leaked keypair.
+app/.keys/
+app/.data/
+
 # --- Editor / OS / logs ---
 .DS_Store
 Thumbs.db

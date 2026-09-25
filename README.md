@@ -10,11 +10,12 @@ layer — one schema, one state machine, two audiences (a human paying a
 freelancer through a Blink, and an agent paying for a priced endpoint through
 x402 under a deterministic spend policy).
 
-**Status: Phase 1 of 5.** The escrow program is implemented: all six
-instructions enforce the Section 4.2 state machine and the Section 4.6
-constraints, and all seven Section 5 threat-model tests pass (`anchor test`,
-21/21 green). The app is still only a boot check — see "What works today"
-below before assuming anything runs.
+**Status: Phase 2 of 5.** The escrow program is implemented and green
+(`anchor test`, 21/21, including one named test per Section 5 threat-model row),
+and the agent/x402 flow now works end to end on devnet: a priced endpoint answers
+`402` with an FRS-1 agreement, a deterministic policy engine decides, the test agent
+pays through the *same* escrow program and captures a receipt, and the verification
+page recomputes that receipt from chain. `npm run test:agent` is green (21/21).
 
 ## The Flint Boundary (what v1 does and does not do)
 
@@ -55,33 +56,72 @@ flint/
 │   ├── src/lib.rs                  # program id + #[program] entrypoint
 │   └── tests/flint-escrow.ts       # Section 5 threat-model tests
 ├── app/                            # Next.js + TypeScript app
-│   ├── app/                        # routes (App Router): api/, pay/[id]/, verify/[tx]/ — later phases
-│   ├── lib/frs1-types.ts           # canonical FRS-1 TypeScript types — Section 4.1
-│   ├── lib/solana.ts               # devnet cluster configuration
+│   ├── app/api/x402/route.ts      # the priced endpoint: 402 + FRS-1, or serve
+│   ├── app/api/agent/run/route.ts # runs the test agent on demand (POST)
+│   ├── app/verify/[tx]/page.tsx   # public receipt verification, from chain
+│   ├── app/agent/page.tsx         # agent harness + decision log (refusals shown)
+│   ├── lib/frs1-types.ts          # canonical FRS-1 TypeScript types — Section 4.1
+│   ├── lib/frs1-chain.ts          # account -> FRS-1 object (the one reader)
+│   ├── lib/flint-program.ts       # program client: the only module that builds txs
+│   ├── lib/policy-engine.ts       # deterministic pay/no-pay rules (no LLM)
+│   ├── lib/decision-log.ts        # append-only JSONL log of every decision
+│   ├── lib/verify.ts              # recomputes a receipt from chain (row 7)
+│   ├── lib/x402.ts                # the x402 wire format
+│   ├── lib/agent.ts               # the test agent
+│   ├── lib/solana.ts              # devnet cluster configuration
 │   └── components/
+├── scripts/provision-devnet.mjs  # wallets, devnet test mint, app/.env.local
+├── scripts/sync-idl.mjs           # copies the generated IDL into app/lib/idl
+├── tests/agent/                   # Phase 2 suites: policy (hermetic) + devnet
 ├── Anchor.toml                     # cluster = devnet
 ├── Cargo.toml                      # Rust workspace
 └── package.json                    # root package: Anchor/mocha tests
 ```
 
-## What works today (Phase 1)
+## What works today (Phase 2)
 
-- The escrow program implements all six instructions — `create`, `fund`,
-  `release`, `refund`, `cancel`, `flag_dispute` — enforcing Section 4.2's
-  state machine and Section 4.6's constraints: Clock-sysvar-only time,
-  stored-payer refunds, recipient-only cancel/dispute, first-funder-wins
-  funding, `cancel` closes the account while `release`/`refund` leave it
-  readable for verification.
-- `anchor test` is green: 21 tests against a local validator, including one
-  named test per Section 5 threat-model row — each constructs the attack and
-  asserts the specific program rejection (0 failing, repeated runs).
-- The app boots and renders the FRS-1 schema, status machine and boundary from
-  `app/lib/frs1-types.ts` — a boot check, not a demo.
-- Devnet is configured (cluster, wallet, program id); the program is not yet
-  deployed there.
+- **The escrow program** implements all six instructions — `create`, `fund`,
+  `release`, `refund`, `cancel`, `flag_dispute` — enforcing Section 4.2's state
+  machine and Section 4.6's constraints. `anchor test` is green: 21 tests against a
+  local validator, one named test per Section 5 threat-model row, each constructing
+  the attack and asserting the specific program rejection.
+- **The x402 responder** (`GET /api/x402`) answers `402` with the x402 envelope and
+  the FRS-1 agreement inside it. The agreement is proposed *on chain* at that
+  moment: the recipient wallet signs `create`, exactly as a person does when sharing
+  a Blink (Section 4.5). The retry carries `X-PAYMENT`; the claim is recomputed from
+  chain before anything is served.
+- **The policy engine** decides pay/no-pay with no model anywhere: amount, recipient
+  allowlist, asset allowlist, status, expiry, TTL, condition type, spend cap,
+  session budget, and envelope/agreement agreement. It is pure and total, and its
+  tests run with no chain and no network.
+- **The test agent** (`/agent`) fetches, decides, and either pays through the same
+  escrow program — funding, then settling with `release` to produce the receipt — or
+  refuses. Refusals are logged with their full check-by-check evaluation and shown
+  on the page; the three demo scenarios (pay, over cap, unknown recipient) are in the
+  form.
+- **Verification** (`/verify/<signature>`) recomputes a receipt from chain: it
+  re-derives the agreement's PDA from the account's own fields, confirms the account
+  status, and checks the transaction's *token balance deltas* — the escrow was
+  debited exactly the agreed amount, and the account that gained it is owned by the
+  stored counterparty. The identical code path serves agent-settled and
+  human-settled agreements; there is no branch that asks who paid.
+- `npm run test:agent` is green: 15 hermetic policy tests + 6 devnet end-to-end
+  tests (402 validity, pay-and-settle, refuse over cap, refuse unknown recipient,
+  agent/human verification parity, forged-receipt rejection).
 
-**Not built yet:** wallet connect, the Blink and x402 flows, the verification
-page, and any devnet deployment of the program.
+**Not built yet:** the human flow's Blink page and wallet connect (Phase 3), the
+`/pay/[id]` route, and any mainnet anything (Phase 4 hardening).
+
+### Why there is no facilitator
+
+Section 6.2 names Kora as an example of reusing facilitator tooling, not a
+requirement. There is no public devnet Kora (or any SVM) facilitator to call, and
+standing one up means running another service — out of scope for this build. So the
+*x402 envelope* is real (`402`, `accepts[]`, `X-PAYMENT`) while *settlement* is FRS-1:
+the agent signs and submits its own `fund` transaction to the same escrow program the
+human flow uses, and verification recomputes from chain rather than trusting a
+facilitator's word. The facilitator slot is a documented seam in `lib/x402.ts`, not
+a stub that pretends to work.
 
 ## Setup
 
@@ -104,7 +144,28 @@ npm run typecheck
 cd /mnt/c/Users/LENOVO/Desktop/Flint
 cargo check -p flint-escrow          # quick type check
 anchor test                          # build + local validator + the 21 tests
+anchor deploy --provider.cluster devnet
 ```
+
+## The agent flow (Phase 2)
+
+The devnet fixture is created by a script, not by hand. It is idempotent — re-running
+it tops up rather than recreating, so wallets keep their history:
+
+```bash
+# One-time per machine: two devnet wallets, a devnet test mint, and app/.env.local
+FLINT_DEPLOYER_KEYPAIR='\\wsl.localhost\Ubuntu\home\<you>\.config\solana\id.json' \
+  node scripts/provision-devnet.mjs
+
+npm run test:policy        # hermetic: policy engine only, no chain, no network
+npm run test:agent         # devnet end to end (402, pay, settle, refuse, verify)
+npm run typecheck          # program tests + app lib + API routes
+```
+
+`app/.env.local` (gitignored) holds the program id, both keypair paths, the asset
+mint, the price and the decision-log path. The keypairs live in `app/.keys/`, also
+gitignored. After changing the program, run `npm run sync:idl` in `app/` to copy the
+regenerated IDL into `app/lib/idl/`.
 
 Devnet configuration already applied: RPC `https://api.devnet.solana.com`,
 keypair `~/.config/solana/id.json`, program id

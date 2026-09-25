@@ -243,6 +243,22 @@ that imply otherwise.
   means a redeploy): title 128 bytes, memo 512, handle 64, condition
   description 256, agent policy allowlist 16 entries, receiptProof 96 bytes.
 
+### 4.7 Judgment calls confirmed during Phase 1 (locked)
+
+- **`oracle-attested` is rejected at `create`, not deferred to `release`.**
+  Matches 4.6's own principle — never allow an agreement to exist that can
+  never resolve.
+- **`cancel` closes both the agreement PDA and the empty escrow ATA**, not
+  just the PDA. The ATA is created at `create` time (ready to receive funds
+  later); since `cancel` is pending-only, the ATA is always empty when this
+  runs, so closing both is safe and prevents stranded rent.
+- **`receiptProof` is never written on-chain.** A program cannot read its
+  own transaction's signature during execution — this is a Solana execution
+  model constraint, not a gap. It's populated at the app/client layer
+  (captured at submission time, or looked up from the account's transaction
+  history) and matches the settlement transaction per 4.4's
+  verify-by-recomputing-from-the-account model.
+
 ---
 
 ## 5. Threat Model — every row needs a test

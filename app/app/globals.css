@@ -121,3 +121,47 @@ body {
 .flint-list li {
   margin: 0.15rem 0;
 }
+
+/*
+ * Form controls. Added in Phase 2 for the agent harness. Same rule as everything
+ * else here: tokens only, no hardcoded colour, so the design pass restyles rather
+ * than rewrites. The harness deliberately has real <button>/<select>/<label>
+ * elements (Section 9) — a wallet-less demo should not need a JS framework to
+ * submit a form.
+ *
+ * TODO-DESIGN: control sizing, focus rings, disabled states.
+ */
+
+.flint-button {
+  background: var(--flint-surface);
+  border: 1px solid var(--flint-line);
+  border-radius: var(--flint-radius);
+  color: var(--flint-ink);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 0.5rem 0.9rem;
+}
+
+.flint-button:hover {
+  border-color: var(--flint-muted);
+}
+
+.flint-button:focus-visible {
+  outline: 2px solid var(--flint-muted);
+  outline-offset: 2px;
+}
+
+select,
+input[type="checkbox"] {
+  font: inherit;
+}
+
+select {
+  background: var(--flint-bg);
+  border: 1px solid var(--flint-line);
+  border-radius: var(--flint-radius);
+  color: var(--flint-ink);
+  padding: 0.35rem 0.5rem;
+}
+

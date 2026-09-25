@@ -1,0 +1,7 @@
+{
+  "require": ["ts-node/register", "./tests/agent/load-env.ts"],
+  "extension": ["ts"],
+  "spec": ["tests/agent/policy-engine.test.ts", "tests/agent/x402-flow.test.ts"],
+  "timeout": 900000,
+  "slow": 20000
+}
