@@ -221,6 +221,28 @@ that imply otherwise.
   decimals are for display only, computed from the string, never round-tripped
   through a float.
 
+### 4.6 Additional constraints resolved during Phase 0
+
+- **Expiry validation, both ends.** `create` rejects any `expiresAt` that is
+  not strictly in the future. `fund` separately rejects funding a `pending`
+  agreement whose `expiresAt` has already passed — time can elapse between
+  create and fund, so both checks are required. Without this, a released
+  agreement could become permanently unpayable (Section 5, row 3 requires
+  `now < expiresAt` to release) while still passing a naive funding check.
+- **`flag_dispute` requires `status == Funded`.** Rejected on `pending`
+  (nothing to dispute) and on `released`/`refunded`/`cancelled` (already
+  terminal). No expiry check — the flag must remain settable/clearable past
+  expiry, since it is advisory-only and must never block the permissionless
+  refund path (Section 4.2's liveness guarantee).
+- **`cancel` closes the account**, returning rent to the recipient. Safe
+  because a cancelled-while-`pending` agreement never held funds or produced
+  a receipt. **`release` and `refund` do not close their accounts** — the
+  verification page reads state directly from the account (4.4, 6.2), and a
+  closed account has nothing left to read.
+- **Field length bounds** (account layout — changing these after Phase 1
+  means a redeploy): title 128 bytes, memo 512, handle 64, condition
+  description 256, agent policy allowlist 16 entries, receiptProof 96 bytes.
+
 ---
 
 ## 5. Threat Model — every row needs a test

@@ -9,7 +9,9 @@
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w"
   },
   "dependencies": {
-    "@anchor-lang/core": "^1.1.2"
+    "@anchor-lang/core": "^1.1.2",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.99.0"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.0",

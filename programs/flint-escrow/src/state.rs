@@ -164,9 +164,21 @@ pub struct FlintAgreement {
     /// signature is deliberately not stored; that is an accepted gap because it
     /// is discoverable from the account's on-chain history.
     ///
-    /// What it proves: that a specific transition occurred, for a specific
-    /// amount and asset, authorized by the required signer. What it does not
-    /// prove: that the real-world condition was actually met (Section 4.4).
+    /// FLAG (raised in Phase 1 — not silently reinterpreted): no instruction
+    /// writes this field, and none ever can. A Solana program cannot read its
+    /// own transaction's signature, so the signature cannot be produced
+    /// on-chain. As implemented, the receipt is the settlement signature the
+    /// *client* observes and records, and its validity is established by
+    /// recomputing status from this account and checking that transaction
+    /// against this program's settlement instruction (Sections 4.4 and 6.2,
+    /// threat-model row 7) — which is the property 4.4 actually asks for. The
+    /// field is retained so the on-chain account stays a subset of the FRS-1
+    /// schema, pending a decision on whether to drop it or replace it with
+    /// something the program *can* write (e.g. the settlement slot).
+    ///
+    /// What a receipt proves: that a specific transition occurred, for a
+    /// specific amount and asset, authorized by the required signer. What it
+    /// does not prove: that the real-world condition was met (Section 4.4).
     #[max_len(MAX_RECEIPT_PROOF_LEN)]
     pub receipt_proof: Option<String>,
 }

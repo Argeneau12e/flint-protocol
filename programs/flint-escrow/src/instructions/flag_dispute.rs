@@ -1,21 +1,63 @@
 //! `flag_dispute` — the recipient sets or clears the advisory dispute flag
 //! (`Funded` → `Funded`).
 //!
-//! PHASE 0 STUB: specification only, no handler. Phase 1 must implement:
+//! Section 4.2: recipient only, either direction. Section 4.6: requires
+//! `status == Funded` — rejected while pending (nothing to dispute) and on any
+//! terminal status — and **no expiry check**, because the flag is advisory: it
+//! never moves custody and must never be read as blocking the permissionless
+//! refund path once `expiresAt` has passed.
 //!
-//! - Signer: the **stored** `recipient_address` only, and the same authority in
-//!   both directions — set and clear (Section 4.2).
-//! - Moves no funds, ever. `disputed_flag` is advisory: it must not block
-//!   `release`, must not block `refund` after expiry, and must not be consulted
-//!   by either of them. A flag that could strand funds past expiry would be a
-//!   liveness bug, and Section 4.2 rules that out.
-//! - Writes only `disputed_flag` and `disputed_at` (set to the current Clock
-//!   time when flagging, cleared back to `None` when unflagging). Row 6: no
-//!   term field may be touched.
-//! - Requires `status == Funded` and `now < expires_at` (the state machine
-//!   allows flagging "before expiry" only).
-//!
-//! Open question to settle before implementing (flagged, not guessed): should
-//! flagging an expired-but-still-funded agreement be rejected (strict reading
-//! of 4.2) or allowed as a no-op-with-no-effect on custody? And may a **pending**
-//! agreement be flagged, or is the flag funded-only?
+//! The instruction takes an explicit `disputed` value rather than toggling, so
+//! repeated calls are idempotent and the flag cannot flip by accident.
+
+use crate::errors::FlintError;
+use crate::instructions::check_canonical_agreement;
+use crate::state::{AgreementStatus, FlintAgreement};
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct FlagDispute<'info> {
+    /// The proposer: the flag is theirs to raise and clear (Section 4.2).
+    pub recipient: Signer<'info>,
+
+    #[account(mut)]
+    pub agreement: Account<'info, FlintAgreement>,
+}
+
+pub fn handle_flag_dispute(ctx: Context<FlagDispute>, disputed: bool) -> Result<()> {
+    let recipient_key = ctx.accounts.recipient.key();
+
+    let now = {
+        let agreement = &ctx.accounts.agreement;
+
+        check_canonical_agreement(agreement)?;
+
+        require_keys_eq!(
+            agreement.recipient_address,
+            recipient_key,
+            FlintError::RecipientOnly
+        );
+
+        // Section 4.6: funded only.
+        require!(
+            agreement.status == AgreementStatus::Funded,
+            FlintError::NotDisputable
+        );
+
+        // Deliberately NO expiry check: settable and clearable past expiry, so
+        // the flag can never be mistaken for a block on refund (Section 4.6).
+
+        Clock::get()?.unix_timestamp
+    };
+
+    // Only the two advisory fields change — never a term field (row 6).
+    let agreement = &mut ctx.accounts.agreement;
+    if agreement.disputed_flag != disputed {
+        agreement.disputed_flag = disputed;
+        // Timestamped when the flag actually changes; a repeat call is a no-op,
+        // so the original dispute time is preserved.
+        agreement.disputed_at = if disputed { Some(now) } else { None };
+    }
+
+    Ok(())
+}

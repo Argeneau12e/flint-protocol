@@ -10,9 +10,11 @@ layer — one schema, one state machine, two audiences (a human paying a
 freelancer through a Blink, and an agent paying for a priced endpoint through
 x402 under a deterministic spend policy).
 
-**Status: Phase 0 of 5.** Repository scaffold, tooling, devnet configuration and
-the FRS-1 types in Rust and TypeScript. No custody logic exists yet — see
-"What works today" below before assuming anything runs.
+**Status: Phase 1 of 5.** The escrow program is implemented: all six
+instructions enforce the Section 4.2 state machine and the Section 4.6
+constraints, and all seven Section 5 threat-model tests pass (`anchor test`,
+21/21 green). The app is still only a boot check — see "What works today"
+below before assuming anything runs.
 
 ## The Flint Boundary (what v1 does and does not do)
 
@@ -50,8 +52,8 @@ flint/
 │   ├── src/instructions/           # create/fund/release/refund/cancel/flag_dispute
 │   ├── src/instructions.rs         # instruction module root
 │   ├── src/errors.rs
-│   ├── src/lib.rs                  # program id (no #[program] entrypoint yet)
-│   └── tests/flint-escrow.ts       # Section 5 threat-model tests (Phase 1)
+│   ├── src/lib.rs                  # program id + #[program] entrypoint
+│   └── tests/flint-escrow.ts       # Section 5 threat-model tests
 ├── app/                            # Next.js + TypeScript app
 │   ├── app/                        # routes (App Router): api/, pay/[id]/, verify/[tx]/ — later phases
 │   ├── lib/frs1-types.ts           # canonical FRS-1 TypeScript types — Section 4.1
@@ -62,16 +64,24 @@ flint/
 └── package.json                    # root package: Anchor/mocha tests
 ```
 
-## What works today (Phase 0)
+## What works today (Phase 1)
 
+- The escrow program implements all six instructions — `create`, `fund`,
+  `release`, `refund`, `cancel`, `flag_dispute` — enforcing Section 4.2's
+  state machine and Section 4.6's constraints: Clock-sysvar-only time,
+  stored-payer refunds, recipient-only cancel/dispute, first-funder-wins
+  funding, `cancel` closes the account while `release`/`refund` leave it
+  readable for verification.
+- `anchor test` is green: 21 tests against a local validator, including one
+  named test per Section 5 threat-model row — each constructs the attack and
+  asserts the specific program rejection (0 failing, repeated runs).
 - The app boots and renders the FRS-1 schema, status machine and boundary from
   `app/lib/frs1-types.ts` — a boot check, not a demo.
-- The Rust FRS-1 types in `programs/flint-escrow/src/state.rs` compile.
-- Devnet is configured (cluster, wallet, program id).
+- Devnet is configured (cluster, wallet, program id); the program is not yet
+  deployed there.
 
-**Not built yet:** all six escrow instructions, all seven threat-model tests
-(0 of 7), wallet connect, funding/release/refund flows, the verification page
-and the x402 agent flow.
+**Not built yet:** wallet connect, the Blink and x402 flows, the verification
+page, and any devnet deployment of the program.
 
 ## Setup
 
@@ -92,7 +102,8 @@ npm run typecheck
 
 # program (WSL)
 cd /mnt/c/Users/LENOVO/Desktop/Flint
-cargo check -p flint-escrow          # Phase 0 bar: types compile
+cargo check -p flint-escrow          # quick type check
+anchor test                          # build + local validator + the 21 tests
 ```
 
 Devnet configuration already applied: RPC `https://api.devnet.solana.com`,
@@ -107,8 +118,8 @@ gitignored, so the keypair is machine-local; if it is ever lost or regenerated,
 run `anchor keys sync` to bring `declare_id!` and `Anchor.toml` back in line
 rather than editing them by hand.
 
-Root-level test dependencies (`npm install` at the repo root) are needed from
-Phase 1 onward, when the threat-model tests exist. The test file lives at
+Root-level test dependencies (`npm install` at the repo root, already applied)
+back the threat-model tests. The test file lives at
 `programs/flint-escrow/tests/flint-escrow.ts` — Section 10's structure — so
 `Anchor.toml`'s test script glob points there explicitly; Anchor's default
 `tests/**/*.ts` would only see a root-level directory.

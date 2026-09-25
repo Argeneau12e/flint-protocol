@@ -14,7 +14,7 @@ default = []
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []
@@ -27,6 +27,12 @@ custom-panic = []
 # If 1.1.2 proves incompatible at the first real SBF build (Phase 1), surface it
 # then and decide — do not bump this silently.
 anchor-lang = "=1.1.2"
+
+# SPL CPI helpers (transfers, ATA init/close). Default features deliberately
+# include token-2022 support in the *dependency*, but this program only ever
+# accepts the legacy SPL Token program for custody: token-2022 extensions such
+# as transfer fees would break the exact-amount invariant in Section 5 row 5.
+anchor-spl = "=1.1.2"
 
 
 [lints.rust]
