@@ -36,7 +36,7 @@ const BOUNDARY_NO = [
 ];
 
 const NOT_BUILT_YET = [
-  "a listing of live agreements, and anything that touches mainnet (Phase 4)",
+  "a listing of live agreements, and anything that touches mainnet — this build is devnet-only, deliberately",
   "a facilitator: the x402 envelope is real, but settlement is FRS-1 escrow, verified by recomputation from chain rather than by a facilitator's word",
 ];
 
@@ -47,8 +47,8 @@ export default function HomePage() {
       <p className="flint-muted mt-2">
         An escrowed, expiring payment agreement on Solana: a fixed amount, a fixed
         asset, a real escrow, an expiry, and a settlement you can verify afterwards
-        from the chain. This build is at Phase 2 of 5 — the escrow program and the
-        agent/x402 flow work end to end on devnet.
+        from the chain. Phases 0–4 are complete: the escrow program, the human Blink
+        flow and the agent/x402 flow all work end to end on devnet.
       </p>
 
       <nav aria-label="Try it" className="mt-4 flex flex-wrap gap-3">
@@ -205,9 +205,10 @@ export default function HomePage() {
           ))}
         </ul>
         <p className="flint-note mt-4 text-sm">
-          Next: Phase 3 — the human flow. A freelancer shares an agreement as a
-          Solana Blink; the client pays the same escrow program the agent pays, and
-          both receipts verify the same way.
+          A freelancer shares an agreement as a Solana Blink; the client pays the
+          same escrow program the agent pays, and both receipts verify the same way.
+          That flow is built and live on devnet — what is listed above is out of
+          scope for this build, not missing work.
         </p>
       </section>
 

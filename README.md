@@ -10,12 +10,14 @@ layer — one schema, one state machine, two audiences (a human paying a
 freelancer through a Blink, and an agent paying for a priced endpoint through
 x402 under a deterministic spend policy).
 
-**Status: Phase 2 of 5.** The escrow program is implemented and green
-(`anchor test`, 21/21, including one named test per Section 5 threat-model row),
-and the agent/x402 flow now works end to end on devnet: a priced endpoint answers
-`402` with an FRS-1 agreement, a deterministic policy engine decides, the test agent
-pays through the *same* escrow program and captures a receipt, and the verification
-page recomputes that receipt from chain. `npm run test:agent` is green (21/21).
+**Status: Phases 0–4 complete.** The escrow program is implemented and green
+(`anchor test`, 21/21, including one named test per Section 5 threat-model row).
+Both flows work end to end on devnet: a recipient creates an agreement and shares it
+as a Solana Blink, a payer funds it and releases it (or, past expiry, anyone can
+refund it to the payer), and a priced endpoint answers `402` with an FRS-1 agreement
+that a deterministic policy engine settles through the *same* escrow program. Every
+receipt is recomputed from chain by the same verification page, whichever flow
+produced it. `npm run test:agent` is green: 35/35.
 
 ## The Flint Boundary (what v1 does and does not do)
 
@@ -78,7 +80,7 @@ flint/
 └── package.json                    # root package: Anchor/mocha tests
 ```
 
-## What works today (Phase 2)
+## What works today
 
 - **The escrow program** implements all six instructions — `create`, `fund`,
   `release`, `refund`, `cancel`, `flag_dispute` — enforcing Section 4.2's state
@@ -99,18 +101,26 @@ flint/
   refuses. Refusals are logged with their full check-by-check evaluation and shown
   on the page; the three demo scenarios (pay, over cap, unknown recipient) are in the
   form.
+- **The human flow** (`/agreement/new`, `/agreement/<id>`, and the Actions endpoint
+  `/api/actions/flint/<id>`) is the same state machine from the other side: a
+  recipient signs `create` and shares the result as a Blink, a payer funds it from
+  any Actions client, the payer releases it, and once it is expired and still
+  funded, anyone can crank the refund to the stored payer.
 - **Verification** (`/verify/<signature>`) recomputes a receipt from chain: it
   re-derives the agreement's PDA from the account's own fields, confirms the account
   status, and checks the transaction's *token balance deltas* — the escrow was
   debited exactly the agreed amount, and the account that gained it is owned by the
   stored counterparty. The identical code path serves agent-settled and
   human-settled agreements; there is no branch that asks who paid.
-- `npm run test:agent` is green: 15 hermetic policy tests + 6 devnet end-to-end
-  tests (402 validity, pay-and-settle, refuse over cap, refuse unknown recipient,
-  agent/human verification parity, forged-receipt rejection).
+- `npm run test:agent` is green: 35 tests — 15 hermetic policy tests, 6 devnet
+  x402 end-to-end tests (402 validity, pay-and-settle, refuse over cap, refuse
+  unknown recipient, agent/human verification parity, forged-receipt rejection),
+  3 devnet human-flow tests (create → fund via the Blink's POST → release;
+  expire → permissionless refund; malformed links), and 11 throttle tests (address
+  keying, the window, configuration, and the refusal a caller actually sees).
 
-**Not built yet:** the human flow's Blink page and wallet connect (Phase 3), the
-`/pay/[id]` route, and any mainnet anything (Phase 4 hardening).
+**Not built yet:** a listing or dashboard of live agreements, and anything that
+touches mainnet — this build is devnet-only, deliberately (Section 12).
 
 ### Why there is no facilitator
 
