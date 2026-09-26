@@ -301,11 +301,38 @@ so the mapping to this table is obvious (e.g. `test_rejects_unauthorized_release
 |---|---|
 | Settlement | Anchor program — escrow PDA with `create`, `fund`, `release`, `refund`, `cancel`, `flag_dispute` instructions, enforcing Section 4.2's state machine exactly |
 | Human payment UX | Solana Actions + Blinks, Phantom-first wallet adapter |
-| Agent settlement | x402 responder on Solana — reuse existing SVM facilitator tooling (Kora for signing/fee-sponsorship) rather than writing bespoke payment verification |
+| Agent settlement | x402 responder on Solana — genuine x402 envelope (402, `x402Version`, `accepts[]`, `X-PAYMENT`/`X-PAYMENT-RESPONSE`); settlement is direct through the Phase 1 escrow program, no facilitator — see 6.4 |
 | Agent policy layer | Deterministic policy engine: spend cap + allowlist check, decision log. **No LLM call in the pay/no-pay decision path** — this must be plain deterministic code, testable without a model in the loop |
 | Verification | Public page that recomputes status by reading the on-chain account directly — never from cached API/UI state |
 
-### 6.3 Stack
+### 6.3 Phase 2 decisions (locked)
+
+- **No facilitator.** Checked before building: no usable Kora repo, no
+  public Solana devnet x402 facilitator exists, and self-hosting one fails
+  the disk budget. The x402 envelope (402 response, headers, retry flow) is
+  genuine; settlement bypasses a facilitator entirely and goes straight
+  through the Phase 1 escrow program, the same as the human flow.
+- **Verify from token balance deltas, never from top-level instruction
+  parsing.** The escrow program's transfer happens via CPI, so it never
+  appears in a transaction's top-level instruction list — only in inner
+  instructions, whose encoding varies by how the transaction was fetched.
+  Correct verification checks that the escrow's token balance decreased by
+  exactly the agreed amount and the stored counterparty's balance increased
+  by it — the state change itself, not an encoding-dependent proxy for it.
+  This applies to any future settlement-verification code, not just the
+  agent flow.
+- **UUIDs must be created v4 from the start** (not generated then
+  reformatted) — a re-derived PDA from a reformatted id computes a different
+  address than the one actually stored on-chain.
+- **A public 402 endpoint mints a new on-chain pending agreement per
+  unauthenticated request** (~0.0105 SOL rent from the service wallet each
+  time). Fine on devnet for a demo; a real spam/rate-limit concern before
+  this ever sees mainnet traffic. **Add a lightweight per-IP/time-window
+  throttle on the 402 route in Phase 4** so the demo wallet can't be drained
+  by repeated hits during judging — not a v1 protocol requirement, just
+  demo-safety hardening.
+
+### 6.4 Stack
 
 - **Program**: Rust / Anchor
 - **App**: Next.js + TypeScript

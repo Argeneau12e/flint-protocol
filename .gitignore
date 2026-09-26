@@ -28,6 +28,9 @@ programs/*/target/deploy/*-keypair.json
 app/.keys/
 app/.data/
 
+# Local test-run logs (devnet suite output pasted into review notes, etc).
+.data/
+
 # --- Editor / OS / logs ---
 .DS_Store
 Thumbs.db

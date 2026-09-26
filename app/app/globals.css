@@ -22,6 +22,14 @@
   --flint-font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --flint-radius: 6px;
   --flint-page-x: 1.25rem;
+  /*
+   * Status colours. Defined here (not inline in components) so the design pass
+   * swaps them in one place, and chosen for contrast against --flint-bg rather
+   * than for looks. Every use is paired with text, so colour is never the only
+   * signal (Section 9).
+   */
+  --flint-error: #a4262c;
+  --flint-success: #146c43;
 }
 
 html {
@@ -163,5 +171,133 @@ select {
   border-radius: var(--flint-radius);
   color: var(--flint-ink);
   padding: 0.35rem 0.5rem;
+}
+
+/*
+ * Phase 3: the human flow's form and feedback elements.
+ *
+ * Same rule as the rest of this file — tokens only, no hardcoded colour, so the
+ * design pass restyles rather than rewrites. The error/success treatment is the
+ * one place that must NOT rely on colour alone (Section 9 asks for reasonable
+ * contrast and for errors to be distinguishable), so each state also carries a
+ * border weight and is always accompanied by text that says what happened.
+ *
+ * TODO-DESIGN: input sizing, focus rings, disabled opacity, inline validation
+ * placement.
+ */
+
+.flint-input {
+  background: var(--flint-bg);
+  border: 1px solid var(--flint-line);
+  border-radius: var(--flint-radius);
+  color: var(--flint-ink);
+  font: inherit;
+  margin-top: 0.25rem;
+  padding: 0.4rem 0.5rem;
+  width: 100%;
+}
+
+.flint-input:focus-visible {
+  border-color: var(--flint-muted);
+  outline: 2px solid var(--flint-muted);
+  outline-offset: 1px;
+}
+
+textarea.flint-input {
+  resize: vertical;
+}
+
+.flint-field {
+  display: block;
+}
+
+.flint-label {
+  display: block;
+  font-weight: 600;
+}
+
+.flint-hint {
+  color: var(--flint-muted);
+  font-size: 0.8125rem;
+  margin: 0.15rem 0 0;
+}
+
+/* Validation text: a sentence explaining what to change, not just "invalid". */
+.flint-error-text {
+  color: var(--flint-error);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin: 0.2rem 0 0;
+}
+
+.flint-note.flint-error {
+  border-left: 4px solid var(--flint-error);
+  color: var(--flint-error);
+}
+
+.flint-note.flint-success {
+  border-left: 4px solid var(--flint-success);
+}
+
+.flint-wallet-row {
+  border-bottom: 1px solid var(--flint-line);
+  padding-bottom: 0.75rem;
+}
+
+.flint-connect {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.flint-copy {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.flint-copy .flint-input {
+  flex: 1 1 18rem;
+  margin-top: 0;
+  min-width: 0;
+}
+
+/* Reserve the feedback region's height so a message cannot shove the form
+   around while a person is reaching for their wallet. */
+.flint-feedback:not(:empty) {
+  margin: 0.25rem 0;
+}
+
+.flint-terms {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.flint-term {
+  border-bottom: 1px solid var(--flint-line);
+  display: grid;
+  gap: 0.25rem 1rem;
+  grid-template-columns: 1fr;
+  padding-bottom: 0.5rem;
+}
+
+@media (min-width: 40rem) {
+  .flint-term {
+    grid-template-columns: 10rem 1fr;
+  }
+}
+
+.flint-term dt {
+  color: var(--flint-muted);
+  font-size: 0.875rem;
+}
+
+.flint-term dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 

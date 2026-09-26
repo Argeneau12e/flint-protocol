@@ -430,11 +430,30 @@ describe("agent / x402 flow on devnet (Section 7.2)", () => {
     //     payer wallet that pays for itself, exactly as a person's wallet will in
     //     Phase 3. No x402, no policy engine, no agent anywhere in this block.
     const humanPayer = Keypair.generate();
+    // A fresh wallet needs SOL before it can pay anything, and the only SOL
+    // available in this environment is what the two provisioned wallets hold — the
+    // devnet faucet is rate-limited and cannot be relied on.
+    //
+    // Sized to what this payer actually needs rather than a round number. It is the
+    // *payer*, so it pays transaction fees and nothing else: the `create` rent comes
+    // from the service wallet below, as the recipient. A few signatures' worth of
+    // fees is ~0.00001 SOL, so the old 0.1 SOL was two orders of magnitude more
+    // than required — and on a long-lived devnet wallet, where the two suites draw
+    // from the same balances, that surplus is what eventually makes this transfer
+    // fail for want of funds rather than for want of code.
+    const payerFeeBudget = 0.01 * LAMPORTS_PER_SOL;
+    const serviceFree = await connection.getBalance(service.keypair.publicKey);
+    const grant = Math.min(payerFeeBudget, Math.max(0, serviceFree - 0.005 * LAMPORTS_PER_SOL));
+    assert.isAbove(
+      grant,
+      0,
+      "the service wallet has SOL to seed the human payer with",
+    );
     const solTransfer = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: service.keypair.publicKey,
         toPubkey: humanPayer.publicKey,
-        lamports: Math.floor(0.1 * LAMPORTS_PER_SOL),
+        lamports: grant,
       }),
     );
     await connection.sendTransaction(solTransfer, [service.keypair]);

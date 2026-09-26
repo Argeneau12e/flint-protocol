@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { FlintWalletProvider } from "@/components/wallet-provider";
 
 /**
  * Root layout.
@@ -7,6 +8,11 @@ import "./globals.css";
  * Structure only — this build has no visual identity yet (FLINT_BUILD_CONTEXT.md
  * Section 9). Document skeleton, landmarks and language are deliberate here
  * because a design pass should restyle this, never restructure it.
+ *
+ * The wallet provider wraps the whole app rather than only the pages that sign:
+ * connecting is a property of the session, and a provider that mounted per-page
+ * would drop the connection on every navigation — which would look to a person
+ * like their wallet had disconnected on its own.
  */
 export const metadata: Metadata = {
   title: "Flint — FRS-1 payment agreements",
@@ -29,7 +35,9 @@ export default function RootLayout({
           </p>
         </header>
 
-        <main className="flint-main">{children}</main>
+        <main className="flint-main">
+          <FlintWalletProvider>{children}</FlintWalletProvider>
+        </main>
 
         {/* TODO-DESIGN: footer slot. Nothing functional is hidden here yet. */}
       </body>

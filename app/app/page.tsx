@@ -36,7 +36,6 @@ const BOUNDARY_NO = [
 ];
 
 const NOT_BUILT_YET = [
-  "the human flow: the Blink landing page and wallet connect (Phase 3)",
   "a listing of live agreements, and anything that touches mainnet (Phase 4)",
   "a facilitator: the x402 envelope is real, but settlement is FRS-1 escrow, verified by recomputation from chain rather than by a facilitator's word",
 ];
@@ -53,6 +52,9 @@ export default function HomePage() {
       </p>
 
       <nav aria-label="Try it" className="mt-4 flex flex-wrap gap-3">
+        <Link className="flint-button" href="/agreement/new">
+          Create a payment agreement
+        </Link>
         <Link className="flint-button" href="/agent">
           Run the test agent
         </Link>
