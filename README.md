@@ -199,8 +199,15 @@ make silently.
 
 ## Prior attempt (disclosure)
 
-TODO(AUTHOR): this must state honestly that an earlier Flint build exists, that
-it was never submitted, that nothing in this repository is copy-pasted from it,
-and that it is referenced only for brand continuity (the FRS-1 name). The text
-belongs to the human who owns that history — it is deliberately not invented
-here.
+An earlier repository, [github.com/Argeneau12e/flint](https://github.com/Argeneau12e/flint),
+holds a **first Flint prototype built for the Frontier hackathon**. It was never
+submitted, and it is **not** the foundation of this build.
+
+This repository is a from-scratch rewrite, not a continuation: a different
+architecture (an on-chain escrow program at
+`ziZiaCVcDaenoUP7jHdEPk4R2XJ8zeY5UbMPKFuqZxE` on devnet, a Blink-based human flow,
+an x402 agent flow), with no code copied from the old repository. The old repo is
+referenced for continuity of the name and the idea only — where this README, the
+code, or `FLINT_BUILD_CONTEXT.md` describe how Flint works, this repository is the
+only source of truth.
+
