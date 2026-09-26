@@ -17,6 +17,21 @@ import { NextResponse } from "next/server";
 export const ACTIONS_VERSION = "1";
 
 /**
+ * CAIP-2 chain ids this endpoint answers on, as the spec's `X-Blockchain-Ids`
+ * header wants them (comma-separated).
+ *
+ * Both are here on purpose. `X-Action-Blockchain: solana` is the header the
+ * original spec examples send; `X-Blockchain-Ids` with the full CAIP-2 ids is
+ * what `@dialectlabs/blinks` (Dialect, co-author of the spec) actually reads —
+ * it treats a response *without* it as unsupported and refuses to unfurl, so a
+ * server sending only the older header looks broken in that client while
+ * passing every wire-format test. Devnet's genesis hash is
+ * `EtWTRABZaYq6iMfeYKouRu166VU2xqa1`; `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`
+ * (mainnet) is deliberately absent — this build is devnet-only (Section 12).
+ */
+export const BLOCKCHAIN_IDS = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
+
+/**
  * Headers a Blink client needs in order to render this at all.
  *
  * Two groups, and both are load-bearing:
@@ -33,11 +48,13 @@ export function actionsHeaders(): Record<string, string> {
   return {
     "X-Action-Version": ACTIONS_VERSION,
     "X-Action-Blockchain": "solana",
+    "X-Blockchain-Ids": BLOCKCHAIN_IDS,
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,X-Payment,X-Signer,X-Action-Version,X-Action-Blockchain",
+    "Access-Control-Allow-Headers":
+      "Content-Type,X-Payment,X-Signer,X-Action-Version,X-Action-Blockchain,X-Blockchain-Ids",
     "Access-Control-Expose-Headers":
-      "X-Action-Version,X-Action-Blockchain,X-Payment-Response,X-Flint-Proposal-Tx",
+      "X-Action-Version,X-Action-Blockchain,X-Blockchain-Ids,X-Payment-Response,X-Flint-Proposal-Tx",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -59,7 +76,14 @@ export function actionsError(
   status: number,
   extra: Record<string, unknown> = {},
 ): NextResponse {
-  return NextResponse.json({ error: message, ...extra }, { status, headers: actionsHeaders() });
+  // Both keys, deliberately. Our own tests and UI read `error`; the reference
+  // Blink client reads `message` (`error.message` in `@dialectlabs/blinks`' POST
+  // handler) and would otherwise render a blank failure to the person holding the
+  // wallet. Same string, two names, so neither audience gets a silent error.
+  return NextResponse.json(
+    { error: message, message, ...extra },
+    { status, headers: actionsHeaders() },
+  );
 }
 
 /**

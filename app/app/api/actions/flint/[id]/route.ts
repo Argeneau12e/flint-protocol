@@ -47,7 +47,7 @@ import {
 } from "../../../../../lib/agreement-view";
 import { actionsError, actionsHeaders, actionsPreflight, BLINK_ICON } from "../../../../../lib/actions";
 import { amountLabel } from "../../../../../lib/display";
-import { agreementUrl } from "../../../../../lib/links";
+import { agreementUrl, requestOrigin } from "../../../../../lib/links";
 
 export const dynamic = "force-dynamic";
 
@@ -146,7 +146,9 @@ export async function GET(
     const { id } = await context.params;
     const recipient = new URL(request.url).searchParams.get("recipient");
     view = await loadAgreementView(getConnection(), programId, id, recipient, assetMint, symbol);
-    origin = new URL(request.url).origin;
+    // The client-facing origin (proxy/tunnel aware) — a card advertising
+    // `localhost` would be unPOSTable from any other machine (see `requestOrigin`).
+    origin = requestOrigin(request);
   } catch (error) {
     if (error instanceof BadAgreementRefError || error instanceof AgreementNotFoundError) {
       return loadError(error);
@@ -213,20 +215,31 @@ class SignerError extends Error {
 /**
  * The signing address, from whichever place the client put it.
  *
+ * `account` is the Actions spec's own field name — the one a real Blink client
+ * sends (`{"account": "<address>", "type": "transaction"}`), verified against
+ * `@dialectlabs/blinks`, the reference implementation Dialect co-authored. A
+ * route that only understood `signer` would pass every wire-format test here and
+ * then 400 the first real client, which is exactly the class of bug this whole
+ * exercise exists to catch. `signer` is kept as Flint's own alias (our create page
+ * and tests use it), and `X-Signer` as the header fallback.
+ *
  * A Blink client may send no body at all (there is nothing to ask the payer — see
- * the empty `parameters` above), so the signer's absence is a *normal* case and
- * `X-Signer` is checked as a fallback. Only a body that is present and unparseable,
- * or a signer that is not a Solana address, is an error.
+ * the empty `parameters` above), so the address's absence is a *normal* case.
+ * Only a body that is present and unparseable, or an address that is not a Solana
+ * address, is an error. The `type` field a spec client also sends is ignored:
+ * Flint builds one kind of transaction here regardless of it.
  */
 function readSigner(where: unknown, headerValue: string | null): string {
   const fromBody =
-    typeof where === "object" && where !== null && "signer" in where
-      ? (where as { signer?: unknown }).signer
+    typeof where === "object" && where !== null
+      ? "account" in where
+        ? (where as { account?: unknown }).account
+        : (where as { signer?: unknown }).signer
       : undefined;
   const candidate = typeof fromBody === "string" ? fromBody : (headerValue ?? "");
   if (candidate === "") {
     throw new SignerError(
-      "Flint needs the address that will sign, as {\"signer\": \"<address>\"} in the POST body or an X-Signer header, so the token account it creates belongs to your wallet.",
+      "Flint needs the address that will sign, as {\"account\": \"<address>\"} (the Actions spec's field) or {\"signer\": \"<address>\"} in the POST body — or an X-Signer header — so the token account it creates belongs to your wallet.",
     );
   }
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(candidate)) {

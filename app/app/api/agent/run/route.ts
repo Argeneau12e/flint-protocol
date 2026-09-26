@@ -23,6 +23,7 @@ import { getConnection } from "../../../../lib/solana";
 import { loadKeypair } from "../../../../lib/keys";
 import { runAgent } from "../../../../lib/agent";
 import { policyForScenario, type AgentScenario } from "../../../../lib/demo-policy";
+import { requestOrigin } from "../../../../lib/links";
 import { RESOURCE } from "../../x402/route";
 
 export const dynamic = "force-dynamic";
@@ -57,7 +58,8 @@ export async function POST(request: Request): Promise<Response> {
   );
 
   // The agent calls its own endpoint over HTTP, exactly as a remote agent would.
-  const origin = new URL(request.url).origin;
+  // Client-facing origin, so a proxied deployment logs links it can actually serve.
+  const origin = requestOrigin(request);
   const result = await runAgent({
     connection,
     programId: config.programId,

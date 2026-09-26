@@ -6,11 +6,14 @@
  * App Router does not serve — the earlier `app/app/actions.json` was never
  * reachable, and nothing in the UI referenced the path it mapped anyway).
  *
- * `rules` is deliberately **empty**, and that is the honest value here: a rule
- * exists to translate a human path (say `/flint/<id>`) into an action API URL, but
- * Flint's shareable link *is* the API URL — `/api/actions/flint/<id>?recipient=…` —
- * so there is no path left to translate. Inventing a rule for a page that does not
- * exist would make a pasted link fail to unfurl in a way that looks like our bug.
+ * `rules` maps the two URLs a person can actually hold onto: the agreement
+ * page (`/agreement/<id>?recipient=…`, which the card links to and which lives
+ * in the browser bar) and the Blink/API URL itself (`/api/actions/flint/<id>?…`,
+ * the string the create form hands over). The reference client fetches this
+ * registry and maps *every* pasted URL through it — no matching rule means
+ * `null` and no unfurl — so an empty registry would make the page link fail to
+ * render in a way that looks like our bug. Patterns are pathname-only (not
+ * absolute URLs) so they match on any origin: localhost, a tunnel, or a domain.
  */
 
 import { actionsHeaders, actionsPreflight } from "../../lib/actions";
@@ -22,7 +25,13 @@ export async function GET(): Promise<Response> {
     JSON.stringify(
       {
         $schema: "https://unpkg.com/@solana/actions-spec/schema/dialog.json",
-        rules: [],
+        rules: [
+          // Pasted agreement page -> that agreement's Blink API URL.
+          { pathPattern: "/agreement/**", apiPath: "/api/actions/flint/**" },
+          // Pasted Blink URL -> itself, so a client that always maps first
+          // still lands on the same endpoint.
+          { pathPattern: "/api/actions/flint/**", apiPath: "/api/actions/flint/**" },
+        ],
       },
       null,
       2,
