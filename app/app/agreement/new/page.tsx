@@ -27,7 +27,7 @@
 
 import Link from "next/link";
 import { readConfig } from "@/lib/config";
-import { CLUSTER, getConnection, explorerTxUrl } from "@/lib/solana";
+import { CLUSTER, getConnection } from "@/lib/solana";
 import { getMint } from "@solana/spl-token";
 import { DEFAULT_CONDITION_DESCRIPTION } from "@/lib/flint-program";
 import { CreateForm } from "@/components/create-form";
@@ -88,7 +88,6 @@ export default async function NewAgreementPage() {
         expiryPresets={EXPIRY_PRESETS}
         conditionDescription={DEFAULT_CONDITION_DESCRIPTION}
         cluster={CLUSTER}
-        explorerTxUrl={explorerTxUrl}
       />
 
       <section className="flint-section" aria-labelledby="what-next">

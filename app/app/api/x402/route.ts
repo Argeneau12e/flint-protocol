@@ -19,6 +19,10 @@
  * reading of "an agreement exists before anyone pays" — a server that minted one
  * per response would be creating on-chain state for every bot that touched the URL.
  *
+ * Because that rent comes out of one shared wallet, the handler is rate limited
+ * *before* it does any work (Section 6.3, `lib/throttle.ts`): a request past the
+ * limit is refused with `429` and an explanation, and creates nothing on chain.
+ *
  * Plain Web `Request`/`Response` on purpose: no framework imports, so the tests
  * exercise this exact handler over a real socket.
  */
@@ -45,6 +49,7 @@ import {
   decodeXPayment,
 } from "../../../lib/x402";
 import { verifyFunding, verifySettlement } from "../../../lib/verify";
+import { checkX402RateLimit } from "../../../lib/throttle";
 
 /** Always fresh: a 402 must be recomputed from the chain, never cached. */
 export const dynamic = "force-dynamic";
@@ -76,6 +81,36 @@ function json(body: unknown, status: number, headers: Record<string, string> = {
 }
 
 export async function GET(request: Request): Promise<Response> {
+  // Section 6.3: bound how much on-chain state a caller — or a loop — can ask this
+  // endpoint to create. A pure in-memory check, so it costs nothing to run first,
+  // and it runs before the config read: a refused request never touches RPC.
+  const { decision, addressKey } = checkX402RateLimit(request);
+  if (!decision.allowed) {
+    console.warn(
+      `[x402] rate limited ${addressKey} (${decision.refusedBy ?? "address"} bucket): ` +
+        `${decision.limit} per ${decision.windowSeconds}s, retry in ${decision.retryAfterSeconds}s`,
+    );
+    return json(
+      {
+        error: "rate_limited",
+        // Named cost, not a generic "slow down": the caller is told what the limit
+        // protects and that this request created nothing.
+        message:
+          "Too many requests: an unpaid request to this endpoint proposes a real escrow " +
+          "agreement on devnet, and the service wallet pays the rent for it, so requests " +
+          `are limited to ${decision.limit} per ${decision.windowSeconds} seconds. ` +
+          "Nothing was created for this request; try again in " +
+          `${decision.retryAfterSeconds} seconds.`,
+        limit: decision.limit,
+        windowSeconds: decision.windowSeconds,
+        retryAfterSeconds: decision.retryAfterSeconds,
+        refusedBy: decision.refusedBy,
+      },
+      429,
+      { "retry-after": String(decision.retryAfterSeconds), "cache-control": "no-store" },
+    );
+  }
+
   let config;
   try {
     config = readConfig();

@@ -62,6 +62,7 @@ import {
 } from "../../app/lib/frs1-chain";
 import { verifyFunding, verifySettlement, type VerificationCheck } from "../../app/lib/verify";
 import { readDecisions } from "../../app/lib/decision-log";
+import { resetX402RateLimit } from "../../app/lib/throttle";
 import { chainNowSeconds } from "../../app/lib/chain-clock";
 import { policyForScenario } from "../../app/lib/demo-policy";
 import type { Frs1Agreement } from "../../app/lib/frs1-types";
@@ -114,6 +115,39 @@ const price = config.priceBaseUnits;
 
 let responder: { url: string; close: () => Promise<void> };
 
+/** Restores the pre-suite rate limit; assigned in `before`, applied in `after`. */
+let rateLimitEnv: { restore: () => void };
+
+/**
+ * Raises the endpoint's rate limit (Section 6.3) for the duration of this suite.
+ *
+ * The limiter is deliberately not what *this* suite tests, and every request here
+ * arrives over loopback, which means every one of them shares a single bucket. Left
+ * at the production default, a suite that makes a dozen protocol requests would
+ * refuse itself partway through and report a throttle as a protocol failure. The
+ * limiter has its own suite (`x402-throttle.test.ts`), which sets its own limits;
+ * this one gets out of the way and puts the environment back afterwards.
+ */
+function raiseRateLimitForSuite(): { restore: () => void } {
+  const saved = new Map(
+    ["FLINT_X402_RATE_LIMIT", "FLINT_X402_RATE_WINDOW_SECONDS"].map(
+      (key) => [key, process.env[key]] as const,
+    ),
+  );
+  process.env.FLINT_X402_RATE_LIMIT = "1000";
+  process.env.FLINT_X402_RATE_WINDOW_SECONDS = "60";
+  resetX402RateLimit();
+  return {
+    restore: () => {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      resetX402RateLimit();
+    },
+  };
+}
+
 /** The agent's balance in the asset, straight from chain. */
 async function agentBalance(): Promise<bigint> {
   const ata = getAssociatedTokenAddressSync(mint, agent.keypair.publicKey, true);
@@ -143,6 +177,7 @@ function describeFailures(
 }
 
 before(async () => {
+  rateLimitEnv = raiseRateLimitForSuite();
   responder = await startResponder();
   const sol = await connection.getBalance(agent.keypair.publicKey);
   const tokens = await agentBalance();
@@ -155,7 +190,10 @@ before(async () => {
 });
 
 after(async () => {
-  await responder.close();
+  // Guarded because these run even when `before` failed part-way, and a teardown
+  // that throws masks the real failure with its own.
+  if (responder !== undefined) await responder.close();
+  rateLimitEnv?.restore();
 });
 
 describe("agent / x402 flow on devnet (Section 7.2)", () => {

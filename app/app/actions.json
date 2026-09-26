@@ -1,9 +1,0 @@
-{
-  "$schema": "https://unpkg.com/@solana/actions-spec/schema/dialog.json",
-  "rules": [
-    {
-      "pathPattern": "/flint/*",
-      "apiPath": "/api/actions/flint/*"
-    }
-  ]
-}

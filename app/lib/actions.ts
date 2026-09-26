@@ -16,12 +16,41 @@ import { NextResponse } from "next/server";
  */
 export const ACTIONS_VERSION = "1";
 
-/** Headers a Blink client reads to decide whether it can render the link. */
+/**
+ * Headers a Blink client needs in order to render this at all.
+ *
+ * Two groups, and both are load-bearing:
+ *
+ *   - The spec's own version/blockchain pair, which a client checks before it
+ *     decides it can unfurl the link.
+ *   - CORS. A Blink is fetched by the *client's* origin — Phantom's in-app browser,
+ *     dial.to, someone else's page — never by ours, so a response without these is
+ *     refused by the browser and the link renders as a dead URL. `*` is right here:
+ *     the endpoints are public, and the POST returns an unsigned transaction that
+ *     only the caller can sign, so there is nothing to protect by narrowing it.
+ */
 export function actionsHeaders(): Record<string, string> {
   return {
     "X-Action-Version": ACTIONS_VERSION,
     "X-Action-Blockchain": "solana",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type,X-Payment,X-Signer,X-Action-Version,X-Action-Blockchain",
+    "Access-Control-Expose-Headers":
+      "X-Action-Version,X-Action-Blockchain,X-Payment-Response,X-Flint-Proposal-Tx",
+    "Access-Control-Max-Age": "86400",
   };
+}
+
+/**
+ * The answer to a CORS preflight.
+ *
+ * Browsers send `OPTIONS` before a cross-origin GET/POST with non-simple headers
+ * (which every Blink request is), so a provider that does not answer it is
+ * unreachable from a browser even though `curl` works.
+ */
+export function actionsPreflight(): NextResponse {
+  return new NextResponse(null, { status: 204, headers: actionsHeaders() });
 }
 
 /** A spec-shaped Actions error: the client shows the message rather than nothing. */

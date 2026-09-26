@@ -45,11 +45,20 @@ import {
   loadAgreementView,
   type AgreementView,
 } from "../../../../../lib/agreement-view";
-import { actionsError, actionsHeaders, BLINK_ICON } from "../../../../../lib/actions";
+import { actionsError, actionsHeaders, actionsPreflight, BLINK_ICON } from "../../../../../lib/actions";
 import { amountLabel } from "../../../../../lib/display";
 import { agreementUrl } from "../../../../../lib/links";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * `OPTIONS` — the CORS preflight a browser sends before it will read or POST a
+ * Blink from another origin (Phantom's in-app browser, dial.to, a widget). Without
+ * it the card silently fails to unfurl in exactly the clients this has to work in.
+ */
+export async function OPTIONS(): Promise<Response> {
+  return actionsPreflight();
+}
 
 /** Plain Web `Request`/`Response`, so the tests drive this handler directly. */
 function json(body: unknown, status: number, headers: Record<string, string> = {}): Response {

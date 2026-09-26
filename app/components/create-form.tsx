@@ -38,6 +38,19 @@ interface Created {
   message: string;
 }
 
+/**
+ * The explorer link, built here rather than passed in as a prop.
+ *
+ * A function cannot cross the server/client boundary — Next throws "Functions
+ * cannot be passed directly to Client Components" at render time — and this page
+ * is server-rendered, so the form takes the cluster name and builds the URL itself.
+ * (The bug this fixes was invisible to `next build` and to every API-level test:
+ * the create page is `force-dynamic`, so it only failed when actually requested.)
+ */
+function explorerTxUrl(signature: string, cluster: string): string {
+  return `https://explorer.solana.com/tx/${signature}?cluster=${cluster}`;
+}
+
 export function CreateForm({
   assetMint,
   assetSymbol,
@@ -45,7 +58,6 @@ export function CreateForm({
   expiryPresets,
   conditionDescription,
   cluster,
-  explorerTxUrl,
 }: {
   assetMint: string;
   assetSymbol: string;
@@ -53,7 +65,6 @@ export function CreateForm({
   expiryPresets: ReadonlyArray<{ minutes: number; label: string }>;
   conditionDescription: string;
   cluster: string;
-  explorerTxUrl: (signature: string) => string;
 }) {
   const router = useRouter();
   const { address, connected } = useFlintWallet();
@@ -152,7 +163,7 @@ export function CreateForm({
                 } That is the creation signature, not a receipt — a receipt is the release or the refund.`
               : null
           }
-          signatureUrl={action.signature === null ? null : explorerTxUrl(action.signature)}
+          signatureUrl={action.signature === null ? null : explorerTxUrl(action.signature, cluster)}
         />
 
         <div className="mt-3">
