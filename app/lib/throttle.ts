@@ -41,6 +41,23 @@ export interface RateLimitResult {
 }
 
 /**
+ * The named buckets, each with its own environment overrides.
+ *
+ * A *scope* is one protected endpoint. Scopes exist so two endpoints cannot share
+ * a budget — an agent run and an unpaid 402 are different costs with different
+ * cadences, and coupling them would mean a burst of one refusing the other.
+ * Env names are listed per scope rather than derived from the scope string, so the
+ * public variable names stay exactly as documented in `.env.example`.
+ */
+export interface ThrottleScope {
+  /** Requests allowed per address per window when nothing overrides it. */
+  defaultLimit: number;
+  defaultWindowSeconds: number;
+  limitEnv: string;
+  windowEnv: string;
+}
+
+/**
  * Requests allowed per address per window, when nothing overrides it.
  *
  * Twelve a minute, not two: this is a backstop against a loop, not a quota for
@@ -52,6 +69,36 @@ export interface RateLimitResult {
  */
 const DEFAULT_LIMIT = 12;
 const DEFAULT_WINDOW_SECONDS = 60;
+
+const SCOPES: Record<string, ThrottleScope> = {
+  /**
+   * `/api/x402` GET. An unpaid request proposes a real agreement on chain, so the
+   * service wallet pays rent for it (the reason this module exists).
+   */
+  x402: {
+    defaultLimit: DEFAULT_LIMIT,
+    defaultWindowSeconds: DEFAULT_WINDOW_SECONDS,
+    limitEnv: "FLINT_X402_RATE_LIMIT",
+    windowEnv: "FLINT_X402_RATE_WINDOW_SECONDS",
+  },
+  /**
+   * `/api/agent/run` POST. An unauthenticated POST here runs the whole agent
+   * loop against a live keypair: it funds, and sometimes releases, a real
+   * agreement — so each call spends the *agent* wallet's SOL for fees and its
+   * tokens for the payment. Lower than the 402 default on purpose: a run costs
+   * several transactions, not one, and a person clicking "run" twice in a row is
+   * still served (two is under this limit).
+   */
+  agentRun: {
+    defaultLimit: 3,
+    defaultWindowSeconds: 60,
+    limitEnv: "FLINT_AGENT_RUN_RATE_LIMIT",
+    windowEnv: "FLINT_AGENT_RUN_RATE_WINDOW_SECONDS",
+  },
+};
+
+/** The scope used when a caller names none; the 402 bucket, the original one. */
+export const DEFAULT_SCOPE = "x402";
 
 /**
  * Bound on retained buckets. Expired buckets are dropped opportunistically, and
@@ -75,14 +122,19 @@ function readPositiveInt(raw: string | undefined, fallback: number): number {
   return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
-/** The limit currently in force — env is read per call so a test (or an operator)
- * can change it without restarting, and so no module-load ordering can freeze it. */
-export function rateLimitConfig(): { limit: number; windowSeconds: number } {
+/** The limit currently in force for a scope. Env is read per call so a test (or an
+ * operator) can change it without restarting, and so no module-load ordering can
+ * freeze it. */
+export function rateLimitConfig(scope: string = DEFAULT_SCOPE): {
+  limit: number;
+  windowSeconds: number;
+} {
+  const scopeConfig = SCOPES[scope] ?? SCOPES[DEFAULT_SCOPE];
   return {
-    limit: readPositiveInt(process.env.FLINT_X402_RATE_LIMIT, DEFAULT_LIMIT),
+    limit: readPositiveInt(process.env[scopeConfig.limitEnv], scopeConfig.defaultLimit),
     windowSeconds: readPositiveInt(
-      process.env.FLINT_X402_RATE_WINDOW_SECONDS,
-      DEFAULT_WINDOW_SECONDS,
+      process.env[scopeConfig.windowEnv],
+      scopeConfig.defaultWindowSeconds,
     ),
   };
 }
@@ -115,10 +167,16 @@ export function clientAddressKey(request: Request): string {
  */
 export function checkX402RateLimit(
   request: Request,
+  scope: string = DEFAULT_SCOPE,
   nowSeconds: number = Date.now() / 1000,
 ): RateLimitResult {
-  const { limit, windowSeconds } = rateLimitConfig();
+  const { limit, windowSeconds } = rateLimitConfig(scope);
   const addressKey = clientAddressKey(request);
+  // The scope is part of the key, not just a lookup for the limit: without it two
+  // endpoints would draw on one shared budget, so a burst of unpaid 402s could
+  // refuse a legitimate agent run (and vice versa) — the coupling the scope
+  // registry exists to prevent.
+  const bucketKey = `${scope}:${addressKey}`;
 
   if (buckets.size >= MAX_BUCKETS) {
     for (const [key, bucket] of buckets) {
@@ -126,7 +184,7 @@ export function checkX402RateLimit(
     }
     // Still full after dropping everything expired: refuse new addresses rather
     // than grow without bound. A fresh window is a minute away, not a restart.
-    if (buckets.size >= MAX_BUCKETS && !buckets.has(addressKey)) {
+    if (buckets.size >= MAX_BUCKETS && !buckets.has(bucketKey)) {
       return {
         decision: {
           allowed: false,
@@ -140,14 +198,17 @@ export function checkX402RateLimit(
     }
   }
 
-  const existing = buckets.get(addressKey);
+  const existing = buckets.get(bucketKey);
   const bucket: Bucket =
     existing === undefined || nowSeconds >= existing.windowStart + windowSeconds
       ? { windowStart: nowSeconds, count: 0 }
       : existing;
 
   bucket.count += 1;
-  buckets.set(addressKey, bucket);
+  // Scoped, exactly as the lookup above: storing under the bare address would make
+  // every read miss (the map holds "1.2.3.4", the lookup asks for "x402:1.2.3.4"),
+  // so every request would start a fresh bucket at count 1 and never be refused.
+  buckets.set(bucketKey, bucket);
 
   const resetsIn = Math.max(1, Math.ceil(bucket.windowStart + windowSeconds - nowSeconds));
   return {

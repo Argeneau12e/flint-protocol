@@ -40,6 +40,7 @@ import {
   loadAgreementView,
   type AgreementView,
 } from "../../../../../lib/agreement-view";
+import { internalFailureMessage, logInternalFailure } from "../../../../../lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -122,7 +123,17 @@ export async function POST(
     if (typeof signerRaw !== "string" || signerRaw === "") {
       return fail("The connected wallet's address is required — it signs the transaction.");
     }
-    signer = new PublicKey(signerRaw);
+    // Validated, not just parsed: an address that is not a public key has to be a
+    // 400 with a sentence explaining it. Letting `new PublicKey` throw would escape
+    // the typed handlers below as an unhandled error and surface as a 500 — telling
+    // the caller the server broke when the request was simply malformed.
+    let parsedSigner: PublicKey;
+    try {
+      parsedSigner = new PublicKey(signerRaw);
+    } catch {
+      return fail(`"${signerRaw}" is not a valid Solana address.`);
+    }
+    signer = parsedSigner;
     programId = dep.programId;
   } catch (error) {
     if (error instanceof AgreementNotFoundError) {
@@ -189,11 +200,9 @@ export async function POST(
         409,
       );
     }
-    return fail(
-      `Could not build the ${settlement} transaction: ${
-        cause instanceof Error ? cause.message : String(cause)
-      }`,
-      500,
-    );
+    // Anything else is an internal failure, so the detail goes to the log rather
+    // than to the caller (see lib/errors.ts).
+    logInternalFailure(`building the ${settlement} transaction`, cause);
+    return fail(internalFailureMessage(), 500);
   }
 }

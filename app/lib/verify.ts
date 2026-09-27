@@ -30,7 +30,7 @@ import type { Frs1Agreement } from "./frs1-types";
 import { agreementPda, readAgreement } from "./flint-program";
 import { toFrs1Agreement, type DecodableAgreement } from "./frs1-chain";
 
-/** One named check in a report. Passes are recorded too â€” the report is evidence. */
+/** One named check in a report. Passes are recorded too — the report is evidence. */
 export interface VerificationCheck {
   name: string;
   passed: boolean;
@@ -46,7 +46,7 @@ export interface AgreementFacts {
   escrowBalance: string | null;
   escrowMint: string | null;
   escrowAuthority: string | null;
-  /** `true` when the account does not exist â€” cancelled, or never created. */
+  /** `true` when the account does not exist — cancelled, or never created. */
   closed: boolean;
 }
 
@@ -91,8 +91,8 @@ interface ParsedInstruction {
  * web3.js `Message` (legacy) or `MessageV0`, and the two expose instructions
  * differently: a legacy message's `instructions` are *resolved* (each account is
  * `{index, isSigner, isWritable}`), while both shapes also carry the raw
- * `compiledInstructions` with `accountKeyIndexes`. This reads the compiled form â€”
- * one shape for both message types â€” and resolves accounts by index through the
+ * `compiledInstructions` with `accountKeyIndexes`. This reads the compiled form —
+ * one shape for both message types — and resolves accounts by index through the
  * message's own key table, which is the same work a runtime does.
  *
  * Which key table to use is decided by which field the message actually carries,
@@ -336,7 +336,7 @@ function emptyFacts(agreementPda = ""): AgreementFacts {
 /**
  * A fetched transaction, read once and shared by every check.
  *
- * `instructions` are the top-level ones â€” a settlement call is always one of those.
+ * `instructions` are the top-level ones — a settlement call is always one of those.
  * `signers` comes from the message header, which states how many leading keys are
  * required signatures. `deltas` are the token balance changes the transaction caused.
  */
@@ -356,7 +356,7 @@ interface ParsedTransaction {
  * that never over-claims and never crashes on its input.
  */
 function looksLikeSignature(value: string): boolean {
-  // 64 bytes in base58 is 86â€“88 characters; the alphabet excludes 0, O, I and l.
+  // 64 bytes in base58 is 86–88 characters; the alphabet excludes 0, O, I and l.
   return /^[1-9A-HJ-NP-Za-km-z]{86,88}$/.test(value);
 }
 
@@ -368,7 +368,7 @@ async function loadTransaction(
   if (!looksLikeSignature(signature)) {
     return {
       ok: false,
-      detail: `"${signature.slice(0, 24)}â€¦" is not a valid transaction signature.`,
+      detail: `"${signature.slice(0, 24)}…" is not a valid transaction signature.`,
     };
   }
   let response;
@@ -531,7 +531,7 @@ export async function verifyFunding(
  * this agreement, for the stored amount and asset, on behalf of the stored payer.
  *
  * This is the receipt. It is returned only when every check passes, and the
- * identical code path serves both flows â€” nothing here knows or cares whether a
+ * identical code path serves both flows — nothing here knows or cares whether a
  * human Blink or an autonomous agent produced the transaction (7.2.5).
  */
 export async function verifySettlement(

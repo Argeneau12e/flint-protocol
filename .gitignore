@@ -31,6 +31,12 @@ app/.data/
 # Local test-run logs (devnet suite output pasted into review notes, etc).
 .data/
 
+# Internal planning and review docs. Not product: they record what was wrong
+# before it was fixed, which is an audit trail for us, not for a judge or an
+# attacker. Committing them would publish the gap list alongside the fixes.
+FLINT_DESIGN.md
+FLINT_SECURITY_AUDIT.md
+
 # --- Editor / OS / logs ---
 .DS_Store
 Thumbs.db

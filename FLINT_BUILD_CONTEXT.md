@@ -512,3 +512,16 @@ each — do not self-advance to the next phase.
   tests passing`).
 - Devnet only. Nothing here should ever reference a mainnet key or touch
   mainnet.
+
+## 13. Companion files (both gitignored — never commit either)
+
+- `FLINT_DESIGN.md` — design tokens and visual rules for the post-Phase-4
+  restyle pass. Read it before touching any styling.
+- `FLINT_SECURITY_AUDIT.md` — the structured security-review plan. Read it
+  before running any static-analysis tool or doing a security pass.
+- Both describe internal process, not product behavior — nothing in either
+  file should be quoted, paraphrased, or referenced by filename in a commit
+  message, code comment, or the README. Add both to `.gitignore` if they
+  aren't already. A security-sensitive code comment should describe the
+  defense that exists, never an unresolved concern — see
+  `FLINT_SECURITY_AUDIT.md` Section 4.

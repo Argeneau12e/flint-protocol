@@ -31,6 +31,7 @@ import {
 import { newUuidBytes, formatUuid } from "../../../lib/frs1-chain";
 import { chainNowSeconds } from "../../../lib/chain-clock";
 import { parseDisplayAmount } from "../../../lib/display";
+import { internalFailureMessage, logInternalFailure } from "../../../lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -154,9 +155,9 @@ export async function POST(request: Request): Promise<Response> {
       },
     );
   } catch (cause) {
-    return fail(
-      `Could not build the agreement: ${cause instanceof Error ? cause.message : String(cause)}`,
-      500,
-    );
+    // Internal failure, so the detail goes to the log rather than to the caller
+    // (see lib/errors.ts).
+    logInternalFailure("building the create transaction", cause);
+    return fail(internalFailureMessage(), 500);
   }
 }

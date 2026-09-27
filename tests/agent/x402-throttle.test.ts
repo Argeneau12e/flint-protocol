@@ -37,6 +37,17 @@ function requestFrom(headers: Record<string, string> = {}): Request {
   return new Request("http://127.0.0.1/api/x402", { headers });
 }
 
+/**
+ * Checks the 402 bucket at an injected time.
+ *
+ * `checkX402RateLimit` takes the scope before the clock, so that two endpoints
+ * cannot draw on one budget; the tests that are *about* the 402 window name the
+ * scope explicitly rather than relying on a positional default.
+ */
+function limitAt(request: Request, at: number) {
+  return checkX402RateLimit(request, "x402", at);
+}
+
 /** Sets environment variables for one block of tests and restores them after. */
 function withEnv(values: Record<string, string>): { restore: () => void } {
   const saved = new Map<string, string | undefined>();
@@ -147,12 +158,12 @@ describe("the window", () => {
     const headers = { "x-forwarded-for": address };
     for (let i = 1; i <= 3; i += 1) {
       assert.isTrue(
-        checkX402RateLimit(requestFrom(headers), t0).decision.allowed,
+        limitAt(requestFrom(headers), t0).decision.allowed,
         `request ${i} of 3 is within the limit`,
       );
     }
 
-    const refused = checkX402RateLimit(requestFrom(headers), t0);
+    const refused = limitAt(requestFrom(headers), t0);
     assert.isFalse(refused.decision.allowed, "the fourth is past the limit");
     assert.equal(refused.decision.refusedBy, "address");
     assert.equal(refused.decision.limit, 3);
@@ -160,20 +171,20 @@ describe("the window", () => {
     assert.equal(refused.decision.retryAfterSeconds, 60, "the whole window is still ahead of it");
 
     // The countdown is real, not a constant: half a window later it says half.
-    const later = checkX402RateLimit(requestFrom(headers), t0 + 30);
+    const later = limitAt(requestFrom(headers), t0 + 30);
     assert.isFalse(later.decision.allowed);
     assert.equal(later.decision.retryAfterSeconds, 30);
   });
 
   it("rolls over once the window has elapsed", () => {
     const headers = { "x-forwarded-for": address };
-    for (let i = 0; i < 4; i += 1) checkX402RateLimit(requestFrom(headers), t0);
-    assert.isFalse(checkX402RateLimit(requestFrom(headers), t0).decision.allowed);
+    for (let i = 0; i < 4; i += 1) limitAt(requestFrom(headers), t0);
+    assert.isFalse(limitAt(requestFrom(headers), t0).decision.allowed);
 
     // One second before the boundary it is still refused...
-    assert.isFalse(checkX402RateLimit(requestFrom(headers), t0 + 59).decision.allowed);
+    assert.isFalse(limitAt(requestFrom(headers), t0 + 59).decision.allowed);
     // ...and at the boundary the bucket is fresh, so the caller is served again.
-    const fresh = checkX402RateLimit(requestFrom(headers), t0 + 60);
+    const fresh = limitAt(requestFrom(headers), t0 + 60);
     assert.isTrue(
       fresh.decision.allowed,
       "a fixed window resets, rather than being a bucket that never refills",
@@ -184,19 +195,76 @@ describe("the window", () => {
   it("counts each address separately — one caller cannot refuse another", () => {
     const noisy = requestFrom({ "x-forwarded-for": "203.0.113.5" });
     const quiet = requestFrom({ "x-forwarded-for": "203.0.113.6" });
-    for (let i = 0; i < 5; i += 1) checkX402RateLimit(noisy, t0);
-    assert.isFalse(checkX402RateLimit(noisy, t0).decision.allowed);
+    for (let i = 0; i < 5; i += 1) limitAt(noisy, t0);
+    assert.isFalse(limitAt(noisy, t0).decision.allowed);
     assert.isTrue(
-      checkX402RateLimit(quiet, t0).decision.allowed,
+      limitAt(quiet, t0).decision.allowed,
       "a throttled neighbour is not this caller's problem",
     );
   });
 
   it("throttles unidentified callers against each other", () => {
-    for (let i = 0; i < 5; i += 1) checkX402RateLimit(requestFrom(), t0);
+    for (let i = 0; i < 5; i += 1) limitAt(requestFrom(), t0);
     assert.isFalse(
-      checkX402RateLimit(requestFrom(), t0).decision.allowed,
+      limitAt(requestFrom(), t0).decision.allowed,
       "a request with no address header still counts, and shares the one bucket",
+    );
+  });
+});
+
+describe("scopes", () => {
+  let env: { restore: () => void };
+  const address = "198.51.100.40";
+  const t0 = 2_000_000;
+
+  before(() => {
+    env = withEnv({
+      FLINT_X402_RATE_LIMIT: "1",
+      FLINT_X402_RATE_WINDOW_SECONDS: "60",
+      FLINT_AGENT_RUN_RATE_LIMIT: "1",
+      FLINT_AGENT_RUN_RATE_WINDOW_SECONDS: "60",
+    });
+  });
+  after(() => {
+    env.restore();
+    resetX402RateLimit();
+  });
+  beforeEach(() => resetX402RateLimit());
+
+  it("gives each endpoint its own budget", () => {
+    const request = requestFrom({ "x-forwarded-for": address });
+
+    // One request exhausts the 402 bucket...
+    assert.isTrue(checkX402RateLimit(request, "x402", t0).decision.allowed);
+    assert.isFalse(checkX402RateLimit(request, "x402", t0).decision.allowed);
+
+    // ...and must not have touched the agent-run bucket, so the same caller is
+    // still served there. Sharing one budget would let a burst of unpaid 402s
+    // refuse a legitimate agent run, which is the coupling the scopes prevent.
+    assert.isTrue(
+      checkX402RateLimit(request, "agentRun", t0).decision.allowed,
+      "a throttled 402 caller is not refused by the agent-run limit",
+      );
+    assert.isFalse(checkX402RateLimit(request, "agentRun", t0).decision.allowed);
+  });
+
+  it("reads each scope's limit from its own variables", () => {
+    assert.deepEqual(rateLimitConfig("x402"), { limit: 1, windowSeconds: 60 });
+    assert.deepEqual(rateLimitConfig("agentRun"), { limit: 1, windowSeconds: 60 });
+
+    // The agent-run default is deliberately lower than the 402 default: a run
+    // signs several transactions, not one.
+    env.restore();
+    env = withEnv({ FLINT_X402_RATE_LIMIT: "", FLINT_AGENT_RUN_RATE_LIMIT: "" });
+    assert.deepEqual(rateLimitConfig("x402"), { limit: 12, windowSeconds: 60 });
+    assert.deepEqual(rateLimitConfig("agentRun"), { limit: 3, windowSeconds: 60 });
+  });
+
+  it("falls back to the 402 budget for a scope it does not recognise", () => {
+    assert.deepEqual(
+      rateLimitConfig("not-a-real-scope"),
+      rateLimitConfig("x402"),
+      "an unknown scope is served by the default rather than being unlimited",
     );
   });
 });

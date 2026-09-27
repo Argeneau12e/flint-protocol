@@ -48,6 +48,7 @@ import {
 import { actionsError, actionsHeaders, actionsPreflight, BLINK_ICON } from "../../../../../lib/actions";
 import { amountLabel } from "../../../../../lib/display";
 import { agreementUrl, requestOrigin } from "../../../../../lib/links";
+import { internalFailureMessage, logInternalFailure } from "../../../../../lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -315,12 +316,10 @@ export async function POST(
       actionsHeaders(),
     );
   } catch (cause) {
-    return actionsError(
-      `Could not build the funding transaction: ${
-        cause instanceof Error ? cause.message : String(cause)
-      }`,
-      500,
-    );
+    // Internal failure, so the reason goes to the log and not to the caller: a
+    // builder error can name a keypair path or an RPC endpoint (see lib/errors.ts).
+    logInternalFailure(`building the funding transaction for ${view.pda}`, cause);
+    return actionsError(internalFailureMessage(), 500);
   }
 }
 

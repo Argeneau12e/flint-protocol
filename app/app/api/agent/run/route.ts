@@ -21,9 +21,11 @@
 import { readConfig, ConfigError } from "../../../../lib/config";
 import { getConnection } from "../../../../lib/solana";
 import { loadKeypair } from "../../../../lib/keys";
+import { logInternalFailure } from "../../../../lib/errors";
 import { runAgent } from "../../../../lib/agent";
 import { policyForScenario, type AgentScenario } from "../../../../lib/demo-policy";
 import { requestOrigin } from "../../../../lib/links";
+import { checkX402RateLimit } from "../../../../lib/throttle";
 import { RESOURCE } from "../../x402/route";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +35,37 @@ function isScenario(value: FormDataEntryValue | null): value is AgentScenario {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  // Rate limited under its own scope, and first, for the same reason the 402
+  // endpoint is: one click here runs a whole agent loop, which signs several real
+  // transactions against the agent wallet's SOL and tokens. A reload loop or a
+  // curious script would spend that wallet directly. Its own scope (not the 402's)
+  // so the two budgets stay independent — see `lib/throttle.ts`.
+  const { decision, addressKey } = checkX402RateLimit(request, "agentRun");
+  if (!decision.allowed) {
+    console.warn(
+      `[agent/run] rate limited ${addressKey}: ${decision.limit} per ` +
+        `${decision.windowSeconds}s, retry in ${decision.retryAfterSeconds}s`,
+    );
+    return Response.json(
+      {
+        error: "rate_limited",
+        message:
+          "Too many agent runs: each one drives a real agent loop that signs " +
+          "transactions and can spend the agent wallet's devnet SOL and tokens, so " +
+          `runs are limited to ${decision.limit} per ${decision.windowSeconds} seconds. ` +
+          "Nothing was spent by this request; try again in " +
+          `${decision.retryAfterSeconds} seconds.`,
+        limit: decision.limit,
+        windowSeconds: decision.windowSeconds,
+        retryAfterSeconds: decision.retryAfterSeconds,
+      },
+      {
+        status: 429,
+        headers: { "retry-after": String(decision.retryAfterSeconds), "cache-control": "no-store" },
+      },
+    );
+  }
+
   const form = await request.formData();
   const scenario: AgentScenario = isScenario(form.get("scenario")) ? String(form.get("scenario")) as AgentScenario : "pay";
   const settle = form.get("settle") === "on";
@@ -48,8 +81,20 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const connection = getConnection();
-  const service = loadKeypair(config.serviceKeypairPath, "service");
-  const agent = loadKeypair(config.agentKeypairPath, "agent");
+
+  // Both wallets are loaded inside the guard for the same reason as the x402
+  // route: `loadKeypair` names the file it could not read by absolute path, which
+  // is the server's own layout and not something a visitor should receive.
+  let service;
+  let agent;
+  try {
+    service = loadKeypair(config.serviceKeypairPath, "service");
+    agent = loadKeypair(config.agentKeypairPath, "agent");
+  } catch (cause) {
+    logInternalFailure("loading the service/agent keypairs", cause);
+    return Response.json({ error: "not_configured" }, { status: 500 });
+  }
+
   const policy = policyForScenario(
     scenario,
     service.address,

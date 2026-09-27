@@ -31,6 +31,7 @@ import { getMint } from "@solana/spl-token";
 import { readConfig, ConfigError } from "../../../lib/config";
 import { getConnection, explorerTxUrl } from "../../../lib/solana";
 import { loadKeypair } from "../../../lib/keys";
+import { logInternalFailure } from "../../../lib/errors";
 import { proposeAgreement, readAgreement } from "../../../lib/flint-program";
 import {
   newUuidBytes,
@@ -128,7 +129,18 @@ export async function GET(request: Request): Promise<Response> {
   // Unpaid: propose an agreement and return 402.
   // ---------------------------------------------------------------------------
   if (paymentHeader === null) {
-    const service = loadKeypair(config.serviceKeypairPath, "service");
+    // `loadKeypair` reports an unreadable keypair by absolute path, so it is the one
+    // call here that must not reach the caller uncaught: a misconfigured deployment
+    // would otherwise answer an anonymous request with the server's directory layout.
+    // The detail goes to the log; the caller gets the generic internal-failure body.
+    let service;
+    try {
+      service = loadKeypair(config.serviceKeypairPath, "service");
+    } catch (cause) {
+      logInternalFailure("loading the service keypair", cause);
+      return json({ error: "not_configured" }, 500);
+    }
+
     const now = await chainNowSeconds(connection);
     // uuid-v4 bytes, so the published id maps back to exactly these bytes and a
     // payer can re-derive the agreement PDA from the object (Section 4.5).
