@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="297 298 430 430" role="img" aria-label="Flint">
+  <!--
+    Flint's large app icon (installed to a home screen, 180px and up).
+
+    This is the full three-shard emblem, not the simplified favicon treatment: at
+    this size there is room to read it, so nothing is dropped. All three shapes are
+    the source paths, unmodified.
+
+    The one deliberate change is the crop. The source emblem sits inside a 1024
+    viewBox that the mark itself only fills about a third of, which is generous
+    clear space in a header and wasted space in an icon. This frame is tightened to
+    the mark's own bounds with a small margin, so the icon fills its tile the way an
+    app icon is expected to.
+
+    The background is included: an installed icon is composited by the OS and is not
+    guaranteed to land on the app's own dark field, which is precisely the case the
+    brand's self-contained variant is provided for.
+  -->
+  <path fill="#0F0D0B" d="M0 0H1024V1024H0Z"/>
+  <g fill="#E3A73C">
+    <path d="M676.44 348.915C678.618 349.494 683.322 358.919 684.562 361.267C691.921 375.206 699.807 388.73 707.782 402.319C677.095 420.351 646.239 438.093 615.218 455.545C625.416 461.859 636.106 467.556 646.295 474.057C638.664 489.153 628.942 505.549 620.48 520.271C608.351 513.152 595.597 506.178 583.31 499.267C565.636 489.226 548.018 479.088 530.457 468.852L530.37 370.387C546.092 369.498 567.856 370.075 584.01 370.016L584.045 401.578C614.931 384.643 645.72 366.353 676.44 348.915Z"/>
+    <path d="M347.424 348.645C354.202 351.194 368.851 360.516 375.994 364.606L440.976 401.72C440.784 391.523 440.949 380.656 440.95 370.411L494.021 370.433C493.505 403.228 493.482 436.029 493.95 468.824C477.309 478.927 460.452 488.669 443.39 498.044C430.358 505.322 417.4 513.323 404.324 520.708C395.456 505.047 386.769 489.284 378.267 473.422C388.384 467.758 399.005 461.836 408.809 455.711C401.229 452.041 385.906 442.447 378.163 437.925C357.853 426.187 337.632 414.295 317.503 402.25C325.894 385.607 338.085 365.283 347.424 348.645Z"/>
+    <path d="M512.542 500.913C516.551 502.285 530.826 511.612 535.612 514.372C557.712 527.294 579.903 540.058 602.185 552.663C594.051 567.222 585.839 581.737 577.548 596.207C567.162 591.202 553.988 584.366 543.645 580.233C544.096 612.795 543.629 646.463 543.552 679.11C533.487 678.896 522.793 679.043 512.68 679.03C502.102 678.988 491.523 679.028 480.946 679.153L480.977 579.984C469.889 585.476 458.765 590.895 447.605 596.239C439.313 581.783 431.097 567.283 422.959 552.74C434.049 545.91 446.739 539.004 458.139 532.415L512.542 500.913Z"/>
+  </g>
+</svg>

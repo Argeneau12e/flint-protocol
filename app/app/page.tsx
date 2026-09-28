@@ -63,7 +63,6 @@ export default function HomePage() {
         </Link>
       </nav>
 
-      {/* TODO-DESIGN: status/progress indicator slot. */}
       <section className="flint-section" aria-labelledby="boundary-heading">
         <h2 id="boundary-heading" className="text-lg font-semibold">
           What FRS-1 v1 guarantees — and what it deliberately does not
@@ -211,8 +210,6 @@ export default function HomePage() {
           scope for this build, not missing work.
         </p>
       </section>
-
-      {/* TODO-DESIGN: empty-state illustration slot for the future agreement list. */}
     </div>
   );
 }

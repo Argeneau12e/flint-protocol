@@ -144,8 +144,8 @@ export default async function AgreementPage({
         </h2>
         <dl className="flint-terms mt-2">
           <Term term="Amount">
-            {view.amountDisplay} {view.symbol}{" "}
-            <span className="flint-muted">({agreement.amount} base units)</span>
+            <span className="flint-num">{view.amountDisplay}</span> {view.symbol}{" "}
+            <span className="flint-muted flint-num">({agreement.amount} base units)</span>
           </Term>
           <Term term="Asset">
             <code>{agreement.asset}</code>
@@ -163,8 +163,10 @@ export default async function AgreementPage({
             )}
           </Term>
           <Term term="Expires">
-            {expiresIn} UTC{" "}
-            <span className="flint-muted">(unix {agreement.expiresAt}, chain clock)</span>
+            <span className="flint-num">{expiresIn}</span> UTC{" "}
+            <span className="flint-muted">
+              (unix <span className="flint-num">{agreement.expiresAt}</span>, chain clock)
+            </span>
           </Term>
           <Term term="Condition">
             <code>{agreement.condition.type}</code> — {agreement.condition.description}

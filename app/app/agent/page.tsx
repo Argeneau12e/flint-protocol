@@ -29,7 +29,11 @@ const OUTCOME_WORDS: Record<DecisionLogEntry["outcome"], string> = {
 function EntryRow({ entry }: { entry: DecisionLogEntry }) {
   return (
     <tr>
-      <td>{new Date(entry.at).toISOString().replace("T", " ").slice(0, 19)}</td>
+      <td>
+        <span className="flint-num">
+          {new Date(entry.at).toISOString().replace("T", " ").slice(0, 19)}
+        </span>
+      </td>
       <td>
         <strong>{OUTCOME_WORDS[entry.outcome]}</strong>
       </td>

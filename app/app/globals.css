@@ -1,125 +1,441 @@
 @import "tailwindcss";
 
 /*
- * Flint has no visual design system yet — colour, typography, logo and motion
- * are a separate, human-led track (FLINT_BUILD_CONTEXT.md Section 9). What
- * exists here is structure: one central place for every visual token, so the
- * design pass is a swap rather than a rewrite.
+ * Flint's design foundations, in one place.
  *
- * RULE: no component may hardcode a colour, font, radius or page spacing.
- * Everything user-visible pulls from the variables below.
+ * This file is the *only* place a colour, font, size, radius or motion curve is
+ * defined. Components reference the tokens below through class names; none of
+ * them hardcodes a value, which is what makes a restyle a token swap rather than
+ * a hunt through every screen.
  *
- * TODO-DESIGN: replace the placeholder values in :root with the real palette,
- * type scale and spacing tokens. Nothing else should need to change.
+ * Values are either taken directly from the brand files or derived from them, and
+ * every derived value says so and why — see the contrast notes on --flint-muted
+ * and --flint-error-text, the two places a raw brand value could not be used
+ * as-is.
  */
 
+/*
+ * Tailwind's type utilities are re-pointed at the token scale, so a component
+ * that says `text-lg` is referencing the design scale rather than a hardcoded rem
+ * value of its own choosing. `inline` emits the token reference directly.
+ */
+@theme inline {
+  --text-sm: var(--flint-text-sm);
+  --text-sm--line-height: var(--flint-leading-ui);
+  --text-lg: var(--flint-text-h2);
+  --text-lg--line-height: var(--flint-leading-heading);
+  --text-2xl: var(--flint-text-h1);
+  --text-2xl--line-height: var(--flint-leading-tight);
+}
+
 :root {
-  --flint-bg: #ffffff;
-  --flint-ink: #111111;
-  --flint-muted: #555555;
-  --flint-line: #d8d8d8;
-  --flint-surface: #f6f6f6;
-  --flint-font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --flint-radius: 6px;
-  --flint-page-x: 1.25rem;
-  /*
-   * Status colours. Defined here (not inline in components) so the design pass
-   * swaps them in one place, and chosen for contrast against --flint-bg rather
-   * than for looks. Every use is paired with text, so colour is never the only
-   * signal (Section 9).
+  /* ---- Colour: surfaces and brand -------------------------------------
+   * Background and accent are taken directly from the logo files, not
+   * approximated: the UI background must match the logo's own field exactly, so
+   * the emblem can sit on it without a visible seam.
    */
-  --flint-error: #a4262c;
-  --flint-success: #146c43;
+  --flint-bg: #0f0d0b;
+  --flint-accent: #e3a73c;
+  --flint-bronze: #8c6423;
+  --flint-ink: #f3ebda;
+
+  /*
+   * Derived from the locked palette above, which fixes the brand colours but
+   * settles no de-emphasised text tone. Opacity would be the wrong tool: text at
+   * partial alpha over a translucent panel compounds unpredictably. This is a
+   * warm grey mixed from cream toward the background, and resolves to 7.35:1 on
+   * --flint-bg — clear of AA even at the smallest size in the scale.
+   */
+  --flint-muted: #a99e8c;
+
+  /* ---- Colour: glass --------------------------------------------------
+   * Depth comes from a translucent panel plus a hairline border, never from
+   * stacked shadows. The border tones are the brand bronze at partial alpha, so
+   * a panel edge reads as the same material as the brand rather than as grey.
+   */
+  --flint-panel: rgba(243, 235, 218, 0.035);
+  --flint-panel-raised: rgba(243, 235, 218, 0.06);
+  --flint-panel-active: rgba(227, 167, 60, 0.09);
+  --flint-line: rgba(140, 100, 35, 0.35);
+  --flint-line-strong: rgba(140, 100, 35, 0.62);
+  --flint-blur: 12px;
+
+  /*
+   * Text drawn *on* the accent fill. The near-black background colour is the
+   * darkest value in the palette and gives 9.11:1 against the gold — the same
+   * relationship the logo itself uses, gold on this exact field.
+   */
+  --flint-on-accent: var(--flint-bg);
+
+  /* ---- Colour: semantic ----------------------------------------------
+   * Desaturated so they sit beside the amber accent rather than compete with it.
+   * Contrast on --flint-bg: success 5.59:1, warning 10.78:1, info 5.55:1 — all
+   * clear of AA for body text.
+   *
+   * --flint-error is the locked brand value and resolves to 4.31:1. That passes
+   * the 3:1 requirement for non-text (borders, icons, the status rail) but falls
+   * short of the 4.5:1 AA needs for body text — exactly the failure mode the
+   * palette warns about. So it is never used for text. --flint-error-text is the
+   * same hue lightened until it clears AA at 5.38:1, and is what error copy uses.
+   */
+  --flint-success: #7a9070;
+  --flint-warning: #f0b84d;
+  --flint-error: #b85c4a;
+  --flint-error-text: #c4705c;
+  --flint-info: #7c8b99;
+
+  /* Width of the coloured rail on a status panel. The rail is a *secondary*
+   * cue: every status message also says what happened in words, because state
+   * must never rest on hue alone. */
+  --flint-rail: 3px;
+
+  /* ---- Typography ------------------------------------------------------
+   * Three families with three jobs: serif for display, humanist sans for body,
+   * monospace for anything read character by character. The families arrive as
+   * CSS variables from `next/font`, which self-hosts them, so these stacks are
+   * fallbacks rather than network lookups.
+   */
+  --flint-font-display:
+    var(--font-display), "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --flint-font-body:
+    var(--font-body), "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --flint-font-mono:
+    var(--font-mono), "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Heading scale, h1 → h4. Mobile-first: these are the small-viewport values,
+   * stepped up once there is room for them (see the media query at the foot of
+   * this file). */
+  --flint-text-h1: 1.875rem;
+  --flint-text-h2: 1.375rem;
+  --flint-text-h3: 1.0625rem;
+  --flint-text-h4: 1rem;
+  --flint-text-body: 1rem;
+  --flint-text-sm: 0.875rem;
+  --flint-text-xs: 0.8125rem;
+
+  --flint-leading-tight: 1.15;
+  --flint-leading-heading: 1.25;
+  --flint-leading-body: 1.6;
+  --flint-leading-ui: 1.45;
+
+  --flint-weight-display: 600;
+  --flint-weight-strong: 600;
+  --flint-weight-body: 400;
+
+  /* A touch of air at display sizes. Negative tracking is deliberately not used
+   * anywhere — it is the fastest way for a serif to start looking cramped. */
+  --flint-tracking-display: 0.01em;
+
+  /* ---- Spacing: 4px base ---------------------------------------------- */
+  --flint-space-1: 0.25rem;
+  --flint-space-2: 0.5rem;
+  --flint-space-3: 0.75rem;
+  --flint-space-4: 1rem;
+  --flint-space-6: 1.5rem;
+  --flint-space-8: 2rem;
+  --flint-space-12: 3rem;
+  --flint-space-16: 4rem;
+
+  /* ---- Radii: one consistent range, never mixed with sharp corners ----- */
+  --flint-radius-sm: 4px;
+  --flint-radius: 6px;
+  --flint-radius-lg: 8px;
+
+  /* ---- Layout ---------------------------------------------------------- */
+  --flint-page-x: 1.25rem;
+  /* Prose measure, inside the 640–720px band — longer lines are harder to track
+   * back to the start of, and this content is contract terms. */
+  --flint-measure: 42rem;
+  /* Wider allowance for anything tabular, which needs its columns. */
+  --flint-measure-wide: 60rem;
+
+  /* ---- Motion: functional only ----------------------------------------
+   * Appearing elements ease out, leaving elements ease in, nothing bounces.
+   * Durations stay inside the 150–250ms band; longer feels unresponsive on a
+   * wallet prompt, shorter reads as a flicker. */
+  --flint-duration-fast: 150ms;
+  --flint-duration: 200ms;
+  --flint-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --flint-ease-in: cubic-bezier(0.55, 0.06, 0.68, 0.19);
+
+  /* Focus ring: one definition, used by every interactive element. */
+  --flint-focus-width: 2px;
+  --flint-focus-offset: 2px;
 }
 
 html {
-  background: var(--flint-bg);
-  /* TODO-DESIGN: motion/animation tokens belong here. */
+  background-color: var(--flint-bg);
+  /* The base field matches the logo background exactly, which is what lets the
+   * transparent emblem drop onto it with no seam. */
+  color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
+  background-color: var(--flint-bg);
   color: var(--flint-ink);
   font-family: var(--flint-font-body);
-  line-height: 1.55;
+  font-size: var(--flint-text-body);
+  font-weight: var(--flint-weight-body);
+  line-height: var(--flint-leading-body);
+  margin: 0;
+  min-height: 100vh;
+  /* Room for the last element and the footer-less layout: a page that ends flush
+   * against the viewport edge reads as truncated. */
+  padding-bottom: var(--flint-space-12);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Headings are set in the display serif with a single weight and no tracking
+ * tricks. Sizes come from the scale above, never from a per-component choice, so
+ * an h2 is the same size on every screen it appears on.
+ */
+h1,
+h2,
+h3,
+h4 {
+  color: var(--flint-ink);
+  font-family: var(--flint-font-display);
+  font-weight: var(--flint-weight-display);
+  letter-spacing: var(--flint-tracking-display);
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--flint-text-h1);
+  line-height: var(--flint-leading-tight);
   margin: 0;
 }
 
+h2 {
+  font-size: var(--flint-text-h2);
+  line-height: var(--flint-leading-heading);
+  margin: 0;
+}
+
+h3 {
+  font-size: var(--flint-text-h3);
+  line-height: var(--flint-leading-heading);
+  margin: 0;
+}
+
+h4 {
+  font-size: var(--flint-text-h4);
+  line-height: var(--flint-leading-heading);
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+/*
+ * Amounts, addresses and hashes. Monospace with tabular figures so digits line
+ * up between rows and 0/O and 1/l cannot be confused — this is a payments
+ * product, and a misread address is a lost payment.
+ */
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--flint-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+}
+
+/* A bare inline value: quiet enough to sit inside a sentence. */
+code {
+  background: var(--flint-panel-raised);
+  border: 1px solid var(--flint-line);
+  border-radius: var(--flint-radius-sm);
+  color: var(--flint-ink);
+  padding: 0.05em 0.32em;
+}
+
+/* Used inside a heading or a link where the chip would add noise. */
+h1 code,
+h2 code,
+h3 code,
+h4 code {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+/* Numbers that are prose-adjacent (an amount, a countdown) rather than a value
+ * in a table. Same family, no chip. */
+.flint-num {
+  font-family: var(--flint-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+a {
+  color: var(--flint-accent);
+  text-decoration-color: var(--flint-line-strong);
+  text-underline-offset: 0.18em;
+  transition: text-decoration-color var(--flint-duration-fast) var(--flint-ease-out);
+}
+
+a:hover {
+  text-decoration-color: currentColor;
+}
+
+/* Wordmark and emblem lockup in the app header. */
+.flint-brand-lockup {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--flint-space-3);
+  text-decoration: none;
+}
+
+/* The emblem carries no border of its own; on the dark field it needs none. */
+.flint-emblem {
+  display: block;
+  flex: none;
+  height: 2.25rem;
+  width: 2.25rem;
+}
+
+/* The wordmark is a single-colour SVG, sized by height so it keeps its own
+ * proportions and never stretches. */
+.flint-wordmark {
+  display: block;
+  height: 1.5rem;
+  width: auto;
+}
+
+/*
+ * The app header: brand lockup on the left, and a hairline that fades from the
+ * brand bronze into the page rather than a hard full-width rule. It sits on a
+ * translucent strip so it reads as glass over the same field, not as a separate
+ * bar bolted on top.
+ */
 .flint-header {
+  -webkit-backdrop-filter: blur(var(--flint-blur));
+  backdrop-filter: blur(var(--flint-blur));
+  background: var(--flint-panel);
   border-bottom: 1px solid var(--flint-line);
-  padding: 1rem var(--flint-page-x);
+  padding: var(--flint-space-3) var(--flint-page-x);
+}
+
+.flint-header-inner {
+  align-items: center;
+  display: flex;
+  gap: var(--flint-space-4);
+  justify-content: space-between;
+  margin: 0 auto;
+  max-width: var(--flint-measure-wide);
 }
 
 .flint-brand {
-  font-weight: 600;
+  font-size: var(--flint-text-h4);
+  font-weight: var(--flint-weight-display);
   margin: 0;
 }
 
 .flint-tagline {
   color: var(--flint-muted);
-  font-size: 0.875rem;
-  margin: 0.125rem 0 0;
+  font-size: var(--flint-text-xs);
+  line-height: var(--flint-leading-ui);
+  margin: 0;
+  text-align: right;
 }
 
+/* Primary column. Prose measure by default — pages opt into the wider measure
+ * themselves if they are tabular. */
 .flint-main {
-  padding: 1.5rem var(--flint-page-x) 3rem;
+  margin: 0 auto;
+  max-width: var(--flint-measure);
+  padding: var(--flint-space-8) var(--flint-page-x) var(--flint-space-16);
 }
 
 .flint-shell {
-  margin: 0 auto;
-  max-width: 46rem;
+  display: block;
 }
 
+/* A section is separated by air and a hairline, never by a box. Boxing every
+ * section would make the page a stack of cards and lose the hierarchy. */
 .flint-section {
   border-top: 1px solid var(--flint-line);
-  margin-top: 1.75rem;
-  padding-top: 1.25rem;
+  margin-top: var(--flint-space-8);
+  padding-top: var(--flint-space-6);
 }
 
 .flint-muted {
   color: var(--flint-muted);
 }
 
+/*
+ * Panels. Translucent fill plus a hairline border; the blur only shows where a
+ * panel overlaps content, which is why there is no shadow to fake the depth.
+ */
 .flint-note {
-  background: var(--flint-surface);
+  background: var(--flint-panel);
   border: 1px solid var(--flint-line);
   border-radius: var(--flint-radius);
-  padding: 0.75rem 1rem;
+  padding: var(--flint-space-3) var(--flint-space-4);
 }
 
+/*
+ * Badges. Small, uppercase and lightly tracked so they read as metadata rather
+ * than as a word in the sentence. Radius stays inside the 4–8px range: a pill
+ * here would be the one shape in the UI that breaks the set.
+ */
 .flint-badge {
+  background: var(--flint-panel-raised);
   border: 1px solid var(--flint-line);
-  border-radius: 999px;
-  display: inline-block;
-  font-size: 0.75rem;
-  margin-left: 0.35rem;
-  padding: 0.05rem 0.5rem;
-}
-
-.flint-badge-terminal {
-  background: var(--flint-surface);
+  border-radius: var(--flint-radius-sm);
   color: var(--flint-muted);
-  font-weight: 600;
+  display: inline-block;
+  font-size: var(--flint-text-xs);
+  letter-spacing: 0.06em;
+  margin-left: var(--flint-space-2);
+  padding: 0.1rem var(--flint-space-2);
+  text-transform: uppercase;
+  vertical-align: 0.08em;
 }
 
+/* A terminal state is a fact about the agreement, so it gets the accent's
+ * weight — still with the word itself carrying the meaning. */
+.flint-badge-terminal {
+  border-color: var(--flint-line-strong);
+  color: var(--flint-accent);
+  font-weight: var(--flint-weight-strong);
+}
+
+/* Tables are the one place the layout deliberately runs wider than the prose
+ * measure: columns need room, and squeezing them defeats the point. */
 .flint-table {
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: var(--flint-text-sm);
   width: 100%;
 }
 
 .flint-table caption {
   color: var(--flint-muted);
-  font-size: 0.875rem;
-  padding-bottom: 0.5rem;
+  font-size: var(--flint-text-xs);
+  padding-bottom: var(--flint-space-2);
   text-align: left;
 }
 
 .flint-table th,
 .flint-table td {
   border-bottom: 1px solid var(--flint-line);
-  padding: 0.4rem 0.6rem;
+  padding: var(--flint-space-2) var(--flint-space-3);
   text-align: left;
   vertical-align: top;
+}
+
+.flint-table thead th {
+  border-bottom-color: var(--flint-line-strong);
+  color: var(--flint-muted);
+  font-size: var(--flint-text-xs);
+  font-weight: var(--flint-weight-strong);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .flint-list {
@@ -127,80 +443,148 @@ body {
 }
 
 .flint-list li {
-  margin: 0.15rem 0;
+  margin: var(--flint-space-1) 0;
+}
+
+/* A marker in the brand accent ties lists to the identity without adding a
+ * second colour to the page. */
+.flint-list li::marker {
+  color: var(--flint-bronze);
 }
 
 /*
- * Form controls. Added in Phase 2 for the agent harness. Same rule as everything
- * else here: tokens only, no hardcoded colour, so the design pass restyles rather
- * than rewrites. The harness deliberately has real <button>/<select>/<label>
- * elements (Section 9) — a wallet-less demo should not need a JS framework to
- * submit a form.
+ * Controls: buttons, selects, checkboxes.
  *
- * TODO-DESIGN: control sizing, focus rings, disabled states.
+ * A button is glass with a bronze hairline, not a gold slab. The accent is spent
+ * on the brand mark, on links and on focus rings, so a page with three actions on
+ * it does not turn into three competing blocks of gold. On press and on hover the
+ * border steps up to the accent, which is where the gold shows its hand.
  */
-
 .flint-button {
-  background: var(--flint-surface);
-  border: 1px solid var(--flint-line);
+  align-items: center;
+  background: var(--flint-panel-raised);
+  border: 1px solid var(--flint-line-strong);
   border-radius: var(--flint-radius);
   color: var(--flint-ink);
   cursor: pointer;
-  font: inherit;
-  font-weight: 600;
-  padding: 0.5rem 0.9rem;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: var(--flint-text-sm);
+  font-weight: var(--flint-weight-strong);
+  gap: var(--flint-space-2);
+  line-height: var(--flint-leading-ui);
+  padding: var(--flint-space-2) var(--flint-space-4);
+  text-decoration: none;
+  transition:
+    background-color var(--flint-duration-fast) var(--flint-ease-out),
+    border-color var(--flint-duration-fast) var(--flint-ease-out),
+    color var(--flint-duration-fast) var(--flint-ease-out);
 }
 
 .flint-button:hover {
-  border-color: var(--flint-muted);
+  background: var(--flint-panel-active);
+  border-color: var(--flint-accent);
+  color: var(--flint-ink);
 }
 
-.flint-button:focus-visible {
-  outline: 2px solid var(--flint-muted);
-  outline-offset: 2px;
+.flint-button:active {
+  transition-duration: var(--flint-duration-fast);
+  transition-timing-function: var(--flint-ease-in);
+}
+
+/* `:disabled` covers a button that is busy or not yet valid; `[aria-disabled]`
+ * covers a link-shaped control. Both must look unmistakably inert, and neither is
+ * the same treatment as focus. */
+.flint-button:disabled,
+.flint-button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.flint-button:disabled:hover,
+.flint-button[aria-disabled="true"]:hover {
+  background: var(--flint-panel-raised);
+  border-color: var(--flint-line-strong);
 }
 
 select,
 input[type="checkbox"] {
-  font: inherit;
+  font-family: inherit;
+  font-size: var(--flint-text-sm);
+  line-height: var(--flint-leading-ui);
 }
 
 select {
-  background: var(--flint-bg);
-  border: 1px solid var(--flint-line);
+  appearance: none;
+  background-color: var(--flint-panel-raised);
+  background-image: linear-gradient(45deg, transparent 50%, var(--flint-muted) 50%),
+    linear-gradient(135deg, var(--flint-muted) 50%, transparent 50%);
+  background-position:
+    right var(--flint-space-4) center,
+    right var(--flint-space-3) center;
+  background-repeat: no-repeat;
+  background-size: 5px 5px, 5px 5px;
+  border: 1px solid var(--flint-line-strong);
   border-radius: var(--flint-radius);
   color: var(--flint-ink);
-  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  padding: var(--flint-space-2) var(--flint-space-8) var(--flint-space-2) var(--flint-space-3);
+}
+
+select:hover {
+  border-color: var(--flint-accent);
+}
+
+/* The checkbox is the one control a native appearance is kept for: a custom one
+ * is a well-known way to break keyboard and screen-reader behaviour, and the
+ * design language has nothing that a native box cannot carry. */
+input[type="checkbox"] {
+  accent-color: var(--flint-accent);
+  cursor: pointer;
+  height: 1rem;
+  width: 1rem;
 }
 
 /*
- * Phase 3: the human flow's form and feedback elements.
+ * Text inputs.
  *
- * Same rule as the rest of this file — tokens only, no hardcoded colour, so the
- * design pass restyles rather than rewrites. The error/success treatment is the
- * one place that must NOT rely on colour alone (Section 9 asks for reasonable
- * contrast and for errors to be distinguishable), so each state also carries a
- * border weight and is always accompanied by text that says what happened.
- *
- * TODO-DESIGN: input sizing, focus rings, disabled opacity, inline validation
- * placement.
+ * Inputs sit on the glass fill rather than the flat page colour so a field reads
+ * as a place you can type, and the focus ring is the one place gold is guaranteed
+ * to appear — a wallet-driven product has to be usable from the keyboard.
  */
-
 .flint-input {
-  background: var(--flint-bg);
-  border: 1px solid var(--flint-line);
+  background: var(--flint-panel-raised);
+  border: 1px solid var(--flint-line-strong);
   border-radius: var(--flint-radius);
   color: var(--flint-ink);
-  font: inherit;
-  margin-top: 0.25rem;
-  padding: 0.4rem 0.5rem;
+  font-family: inherit;
+  font-size: var(--flint-text-sm);
+  line-height: var(--flint-leading-ui);
+  margin-top: var(--flint-space-1);
+  padding: var(--flint-space-2) var(--flint-space-3);
+  transition:
+    border-color var(--flint-duration-fast) var(--flint-ease-out),
+    background-color var(--flint-duration-fast) var(--flint-ease-out);
   width: 100%;
 }
 
-.flint-input:focus-visible {
-  border-color: var(--flint-muted);
-  outline: 2px solid var(--flint-muted);
-  outline-offset: 1px;
+.flint-input:hover {
+  border-color: var(--flint-accent);
+}
+
+/* An input the person still has to fix: the border tints toward the error, and
+ * the message beneath it says what to change. Never colour alone. */
+.flint-input[aria-invalid="true"] {
+  border-color: var(--flint-error);
+}
+
+/* Value fields — an amount, an address, a copyable link — are monospace, because
+ * every one of them is a value somebody has to read or compare exactly. */
+.flint-input.flint-num,
+#blink-url,
+#page-url {
+  font-family: var(--flint-font-mono);
+  font-size: var(--flint-text-xs);
 }
 
 textarea.flint-input {
@@ -213,50 +597,85 @@ textarea.flint-input {
 
 .flint-label {
   display: block;
-  font-weight: 600;
+  font-size: var(--flint-text-sm);
+  font-weight: var(--flint-weight-strong);
+  line-height: var(--flint-leading-ui);
 }
 
 .flint-hint {
   color: var(--flint-muted);
-  font-size: 0.8125rem;
-  margin: 0.15rem 0 0;
+  font-size: var(--flint-text-xs);
+  margin: var(--flint-space-1) 0 0;
 }
 
-/* Validation text: a sentence explaining what to change, not just "invalid". */
+/*
+ * Inline validation. Always a sentence explaining what to change — "the amount
+ * needs at most 6 decimal places" is actionable, "invalid" is not.
+ */
 .flint-error-text {
-  color: var(--flint-error);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  margin: 0.2rem 0 0;
+  color: var(--flint-error-text);
+  font-size: var(--flint-text-xs);
+  font-weight: var(--flint-weight-strong);
+  margin: var(--flint-space-1) 0 0;
 }
 
+/*
+ * Status panels.
+ *
+ * Each carries a coloured rail, an accent-tinted fill and — the part that matters
+ * — text that states what happened. The rail is a secondary cue: colour alone
+ * never distinguishes success from failure, and the rail plus the wording plus the
+ * raised border weight give three independent signals.
+ */
 .flint-note.flint-error {
-  border-left: 4px solid var(--flint-error);
-  color: var(--flint-error);
+  background: rgba(184, 92, 74, 0.1);
+  border-color: var(--flint-error);
+  border-left: var(--flint-rail) solid var(--flint-error);
+  color: var(--flint-ink);
 }
 
+/* The message text inside a status panel is body-sized, not small print: it is
+ * the thing the person has to read. */
+.flint-note.flint-error,
+.flint-note.flint-success,
+.flint-note.flint-warning {
+  font-size: var(--flint-text-sm);
+}
+
+/* Success reads as a settled fact, so it gets the calmer sage rather than the
+ * accent — the gold stays reserved for actions and brand. */
 .flint-note.flint-success {
-  border-left: 4px solid var(--flint-success);
+  background: rgba(122, 144, 112, 0.1);
+  border-color: var(--flint-success);
+  border-left: var(--flint-rail) solid var(--flint-success);
+}
+
+/* In-flight work: the one status that is genuinely neither success nor failure,
+ * so it takes the neutral info tone and never the error red. */
+.flint-note.flint-warning {
+  background: rgba(240, 184, 77, 0.1);
+  border-color: var(--flint-warning);
+  border-left: var(--flint-rail) solid var(--flint-warning);
 }
 
 .flint-wallet-row {
   border-bottom: 1px solid var(--flint-line);
-  padding-bottom: 0.75rem;
+  padding-bottom: var(--flint-space-3);
 }
 
 .flint-connect {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem;
+  gap: var(--flint-space-3);
 }
 
 .flint-copy {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
+  gap: var(--flint-space-2);
+  margin-top: var(--flint-space-1);
 }
 
 .flint-copy .flint-input {
@@ -265,39 +684,103 @@ textarea.flint-input {
   min-width: 0;
 }
 
-/* Reserve the feedback region's height so a message cannot shove the form
-   around while a person is reaching for their wallet. */
+/* Reserve the feedback region's height so a message cannot shove the form around
+ * while a person is reaching for their wallet. */
 .flint-feedback:not(:empty) {
-  margin: 0.25rem 0;
+  margin: var(--flint-space-2) 0;
 }
 
+/*
+ * Terms, as a definition list. Label column on wide screens, stacked on narrow
+ * ones — the same content read either way, never a horizontally scrolling table
+ * of contract terms on a phone.
+ */
 .flint-terms {
   display: grid;
-  gap: 0.5rem;
+  gap: var(--flint-space-2);
   margin: 0;
 }
 
 .flint-term {
   border-bottom: 1px solid var(--flint-line);
   display: grid;
-  gap: 0.25rem 1rem;
+  gap: var(--flint-space-1) var(--flint-space-4);
   grid-template-columns: 1fr;
-  padding-bottom: 0.5rem;
-}
-
-@media (min-width: 40rem) {
-  .flint-term {
-    grid-template-columns: 10rem 1fr;
-  }
+  padding-bottom: var(--flint-space-2);
 }
 
 .flint-term dt {
   color: var(--flint-muted);
-  font-size: 0.875rem;
+  font-size: var(--flint-text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .flint-term dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Focus — one ring for every interactive element.
+ *
+ * Declared at the end so nothing above can quietly override it, and stated for
+ * all four control types explicitly rather than relying on a UA default that
+ * varies by browser. `:focus-visible` only, so a mouse click does not leave a
+ * ring behind while keyboard navigation always gets one.
+ */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  border-radius: var(--flint-radius-sm);
+  outline: var(--flint-focus-width) solid var(--flint-accent);
+  outline-offset: var(--flint-focus-offset);
+}
+
+/* A focused field shows both the ring and the accent border, so the ring is never
+ * sitting against a same-coloured edge. */
+.flint-input:focus-visible,
+select:focus-visible {
+  border-color: var(--flint-accent);
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Room to breathe once there is room for it.
+ *
+ * Mobile-first: the scale above is sized for a phone, and this steps the display
+ * sizes and the page gutter up on anything with a real viewport.
+ */
+@media (min-width: 40rem) {
+  :root {
+    --flint-text-h1: 2.5rem;
+    --flint-text-h2: 1.625rem;
+    --flint-text-h3: 1.125rem;
+    --flint-page-x: 2rem;
+  }
+
+  .flint-term {
+    grid-template-columns: 9rem 1fr;
+  }
+}
+
+/*
+ * Respect a stated preference for less motion: transitions collapse to their end
+ * state rather than animating. Nothing here is decorative, but a person who has
+ * asked for stillness should not get a fade they did not ask for.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 

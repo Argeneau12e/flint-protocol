@@ -41,8 +41,14 @@ export function FlintWalletProvider({ children }: { children: ReactNode }) {
             : "The wallet could not be initialised in this browser.",
         );
       }}
-      // TODO-DESIGN: connect-button placement and copy live with the design track;
-      // the wording is the part that must not change silently.
+      /*
+       * The connect control is Flint's own rather than the adapter kit's modal, and
+       * it lives in the page flow next to the action it enables — not in a header
+       * bar, where a person would be asked to connect before they have seen what
+       * they are connecting for. Its copy names the specific wallet it will prompt
+       * with and is part of the product's language; changing that wording changes
+       * what a person is agreeing to, so it is not a styling value.
+       */
     >
       {error === null ? null : (
         <p role="alert" className="flint-note flint-error">

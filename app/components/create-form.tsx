@@ -254,7 +254,7 @@ export function CreateForm({
           <input
             id="amount"
             name="amount"
-            className="flint-input"
+            className="flint-input flint-num"
             inputMode="decimal"
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
@@ -262,11 +262,17 @@ export function CreateForm({
             aria-invalid={!amountCheck.ok}
           />
           <p className={amountCheck.ok ? "flint-hint" : "flint-error-text"}>
-            {amountCheck.ok
-              ? `Exactly ${amountCheck.baseUnits} base units will be escrowed.`
-              : amount.trim() === ""
-                ? "Enter an amount."
-                : amountCheck.error}
+            {amountCheck.ok ? (
+              <>
+                Exactly{" "}
+                <span className="flint-num">{amountCheck.baseUnits}</span> base units
+                will be escrowed.
+              </>
+            ) : amount.trim() === "" ? (
+              "Enter an amount."
+            ) : (
+              amountCheck.error
+            )}
           </p>
         </Field>
 
