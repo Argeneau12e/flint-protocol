@@ -24,6 +24,13 @@ import { CLUSTER } from "./solana";
  */
 export const DEFAULT_PROGRAM_ID = "ziZiaCVcDaenoUP7jHdEPk4R2XJ8zeY5UbMPKFuqZxE";
 
+/**
+ * Circle's devnet USDC mint — the exact address from Circle's own contract
+ * address page ("Solana Devnet" row), confirmed for Phase 5a rather than
+ * recalled from memory. Display defaults only: nothing on chain reads it.
+ */
+export const USDC_DEVNET_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+
 /** Everything the agent flow needs, resolved and validated once per process. */
 export interface AgentFlowConfig {
   /** The deployed Flint escrow program. */
@@ -147,9 +154,15 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): AgentFlowConfi
     serviceKeypairPath,
     agentKeypairPath,
     assetMint,
-    // Display-only. "TST" rather than "USDC": a devnet test mint must never be
-    // presented as a real stablecoin, in the UI or in a receipt.
-    assetSymbol: env.FLINT_ASSET_SYMBOL ?? "TST",
+    // Display-only (Section 4.5), and the default is mint-aware as of Phase 5a:
+    // the demo asset is Circle's devnet USDC, so an unset symbol may claim
+    // "USDC" *only* when the configured mint is exactly that mint — everything
+    // else falls back to "TST", because a throwaway test mint must never be
+    // presented as a real stablecoin in the UI or a receipt. An explicit
+    // FLINT_ASSET_SYMBOL always wins (the automated tests pin TST that way).
+    assetSymbol:
+      env.FLINT_ASSET_SYMBOL ??
+      (assetMint.toBase58() === USDC_DEVNET_MINT ? "USDC" : "TST"),
     priceBaseUnits,
     agreementTtlSeconds,
     decisionLogPath:

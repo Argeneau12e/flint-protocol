@@ -112,6 +112,9 @@
   --flint-text-body: 1rem;
   --flint-text-sm: 0.875rem;
   --flint-text-xs: 0.8125rem;
+  /* The step between body and h4 — a lede under a page title, a card's first line.
+     Nothing else in the scale sits there, and inline `1.125rem` did. */
+  --flint-text-lg: 1.125rem;
 
   --flint-leading-tight: 1.15;
   --flint-leading-heading: 1.25;
@@ -131,6 +134,7 @@
   --flint-space-2: 0.5rem;
   --flint-space-3: 0.75rem;
   --flint-space-4: 1rem;
+  --flint-space-5: 1.25rem;
   --flint-space-6: 1.5rem;
   --flint-space-8: 2rem;
   --flint-space-12: 3rem;
@@ -143,6 +147,12 @@
 
   /* ---- Layout ---------------------------------------------------------- */
   --flint-page-x: 1.25rem;
+  /* The product field. A page is a workspace, not a document: cards and tables
+   * need room, and the prose inside a card carries its own narrower measure. */
+  --flint-wrap: 70rem;
+  --flint-header-h: 64px;
+  --flint-gap: 1.25rem;
+
   /* Prose measure, inside the 640–720px band — longer lines are harder to track
    * back to the start of, and this content is contract terms. */
   --flint-measure: 42rem;
@@ -316,18 +326,23 @@ a:hover {
 .flint-header {
   -webkit-backdrop-filter: blur(var(--flint-blur));
   backdrop-filter: blur(var(--flint-blur));
-  background: var(--flint-panel);
+  background: rgba(15, 13, 11, 0.85);
   border-bottom: 1px solid var(--flint-line);
-  padding: var(--flint-space-3) var(--flint-page-x);
+  padding: 0;
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 .flint-header-inner {
   align-items: center;
   display: flex;
-  gap: var(--flint-space-4);
-  justify-content: space-between;
+  gap: var(--flint-space-6);
+  height: var(--flint-header-h);
   margin: 0 auto;
-  max-width: var(--flint-measure-wide);
+  max-width: var(--flint-wrap);
+  padding: 0 var(--flint-page-x);
+  position: relative;
 }
 
 .flint-brand {
@@ -344,12 +359,12 @@ a:hover {
   text-align: right;
 }
 
-/* Primary column. Prose measure by default — pages opt into the wider measure
- * themselves if they are tabular. */
+/* Primary field. Wide enough for cards and tables side by side; prose inside a
+ * card carries its own narrower measure (.flint-prose). */
 .flint-main {
   margin: 0 auto;
-  max-width: var(--flint-measure);
-  padding: var(--flint-space-8) var(--flint-page-x) var(--flint-space-16);
+  max-width: var(--flint-wrap);
+  padding: var(--flint-space-12) var(--flint-page-x) var(--flint-space-16);
 }
 
 .flint-shell {
@@ -781,6 +796,531 @@ select:focus-visible {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===========================================================================
+ * Chrome and surfaces.
+ *
+ * The bar carries five destinations, the cluster this deployment talks to, and
+ * the wallet — nothing else, which is the whole difference between a header that
+ * orients someone and a header that shoves. Below it, one card surface, one
+ * pill, one key/value row, and one display size per role; a page is assembled
+ * from those rather than inventing a layout of its own.
+ * ========================================================================= */
+
+.flint-emblem {
+  height: 30px;
+  width: 30px;
+}
+
+.flint-wordmark {
+  height: 22px;
+  width: auto;
+}
+
+/* --- Nav --- */
+.flint-nav {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: var(--flint-space-1);
+  min-width: 0;
+}
+
+.flint-nav a {
+  border-radius: var(--flint-radius-lg);
+  color: var(--flint-muted);
+  font-size: var(--flint-text-sm);
+  font-weight: 500;
+  line-height: var(--flint-leading-ui);
+  padding: 8px 12px;
+  text-decoration: none;
+  transition:
+    background-color var(--flint-duration-fast) var(--flint-ease-out),
+    color var(--flint-duration-fast) var(--flint-ease-out);
+  white-space: nowrap;
+}
+
+.flint-nav a:hover,
+.flint-nav a[aria-current="page"] {
+  background: var(--flint-panel);
+  color: var(--flint-ink);
+}
+
+.flint-nav-toggle {
+  background: none;
+  border: 1px solid var(--flint-line);
+  border-radius: var(--flint-radius-lg);
+  color: var(--flint-ink);
+  cursor: pointer;
+  display: none;
+  line-height: 1;
+  padding: 8px 10px;
+}
+
+.flint-header-actions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--flint-space-3);
+  margin-left: auto;
+}
+
+/* The cluster is stated once, in the bar, instead of repeated in body copy. */
+.flint-cluster {
+  border: 1px solid var(--flint-line);
+  border-radius: 99px;
+  color: var(--flint-muted);
+  font-family: var(--flint-font-mono);
+  font-size: var(--flint-text-xs);
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+/* The header's wallet control reads as the page's one primary action, so it is
+ * the one place the button is gold-filled by default. */
+.flint-header-actions .flint-connect {
+  gap: var(--flint-space-2);
+}
+
+/* --- Buttons --- */
+.flint-primary {
+  background: var(--flint-accent);
+  border-color: var(--flint-accent);
+  color: var(--flint-on-accent);
+}
+
+.flint-primary:hover {
+  background: var(--flint-accent);
+  border-color: var(--flint-accent);
+  color: var(--flint-on-accent);
+}
+
+/* A disabled primary must not flip to the grey hover state the generic disabled
+ * rule gives it: gold-and-faded reads as "this is the button, not yet". */
+.flint-primary:disabled,
+.flint-primary:disabled:hover {
+  background: var(--flint-accent);
+  border-color: var(--flint-accent);
+  color: var(--flint-on-accent);
+}
+
+/* --- Wallet banner --- */
+.flint-alert-bar {
+  -webkit-backdrop-filter: blur(var(--flint-blur));
+  backdrop-filter: blur(var(--flint-blur));
+  left: 0;
+  padding: 0 var(--flint-page-x);
+  position: fixed;
+  right: 0;
+  top: calc(var(--flint-header-h) + var(--flint-space-3));
+  z-index: 30;
+}
+
+.flint-alert-bar > p {
+  margin: 0 auto;
+  max-width: var(--flint-wrap);
+}
+
+/* --- Mobile: the nav folds into the hamburger, the pill steps out --- */
+@media (max-width: 46rem) {
+  .flint-header-inner {
+    gap: var(--flint-space-3);
+  }
+
+  .flint-nav {
+    background: var(--flint-bg);
+    border-bottom: 1px solid var(--flint-line);
+    display: none;
+    flex-direction: column;
+    gap: var(--flint-space-1);
+    left: 0;
+    padding: var(--flint-space-2) var(--flint-page-x) var(--flint-space-4);
+    position: absolute;
+    right: 0;
+    top: var(--flint-header-h);
+  }
+
+  .flint-nav[data-open="true"] {
+    display: flex;
+  }
+
+  .flint-nav a {
+    padding: 12px;
+    width: 100%;
+  }
+
+  .flint-nav-toggle {
+    display: inline-flex;
+  }
+
+  .flint-cluster {
+    display: none;
+  }
+}
+
+/* --- Type roles --- */
+:root {
+  /* Cards take one radius step above controls, and nothing takes a fourth. */
+  --flint-radius-card: 12px;
+}
+
+.flint-eyebrow {
+  color: var(--flint-accent);
+  font-family: var(--flint-font-mono);
+  font-size: var(--flint-text-xs);
+  letter-spacing: 0.14em;
+  margin: 0 0 var(--flint-space-3);
+  text-transform: uppercase;
+}
+
+/* The hero is the only place the display face goes this large. Page titles one
+ * step below it, so a page still reads as part of one site. */
+.flint-display {
+  font-size: clamp(2.375rem, 6vw, 4rem);
+  letter-spacing: var(--flint-tracking-display);
+  line-height: var(--flint-leading-tight);
+  margin: 0;
+}
+
+.flint-page-title {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  letter-spacing: var(--flint-tracking-display);
+  line-height: var(--flint-leading-tight);
+  margin: var(--flint-space-2) 0 0;
+}
+
+.flint-lede {
+  color: var(--flint-muted);
+  font-size: 1.125rem;
+  margin: var(--flint-space-5, 1.25rem) 0 0;
+  max-width: 46rem;
+}
+
+/* Body copy keeps the reading measure even inside a wide card. */
+.flint-prose {
+  max-width: var(--flint-measure);
+}
+
+/* The same measure as a width, for a whole card that holds nothing but prose or
+ * one short form — a card that ran to the full wrap width would put 90 characters
+ * on a line and read as a wall of text. */
+.flint-measure {
+  max-width: var(--flint-measure);
+  width: 100%;
+}
+
+/* --- Surfaces and layout --- */
+.flint-card {
+  -webkit-backdrop-filter: blur(var(--flint-blur));
+  backdrop-filter: blur(var(--flint-blur));
+  background: var(--flint-panel);
+  border: 1px solid var(--flint-line);
+  border-radius: var(--flint-radius-card);
+  padding: var(--flint-space-6);
+}
+
+.flint-card > :first-child {
+  margin-top: 0;
+}
+
+.flint-card > :last-child {
+  margin-bottom: 0;
+}
+
+.flint-grid {
+  display: grid;
+  gap: var(--flint-gap);
+}
+
+.flint-cols-2 {
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+}
+
+.flint-cols-4 {
+  grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr));
+}
+
+.flint-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--flint-space-4);
+}
+
+.flint-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--flint-space-3);
+}
+
+.flint-row-between {
+  justify-content: space-between;
+}
+
+.flint-block {
+  margin-top: var(--flint-space-16);
+}
+
+.flint-block > h2 {
+  margin-bottom: var(--flint-space-6);
+}
+
+.flint-step b {
+  color: var(--flint-accent);
+  font-family: var(--flint-font-mono);
+  font-size: var(--flint-text-xs);
+  font-weight: 500;
+  letter-spacing: 0.14em;
+}
+
+/* The payer's view, shown as it will be seen: gold-edged, figure first. */
+.flint-preview {
+  border-color: var(--flint-accent);
+}
+
+.flint-amount {
+  font-family: var(--flint-font-mono);
+  font-size: 2.5rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  margin: var(--flint-space-3) 0 var(--flint-space-1);
+}
+
+.flint-amount span {
+  color: var(--flint-muted);
+  font-size: 1.125rem;
+}
+
+/* --- Facts, pills, checks --- */
+.flint-kv {
+  align-items: baseline;
+  border-bottom: 1px solid var(--flint-line);
+  display: flex;
+  font-size: var(--flint-text-sm);
+  gap: var(--flint-space-4);
+  justify-content: space-between;
+  padding: 9px 0;
+}
+
+.flint-kv:last-of-type {
+  border-bottom: 0;
+}
+
+.flint-kv dt,
+.flint-kv .flint-kv-key {
+  color: var(--flint-muted);
+  margin: 0;
+}
+
+.flint-kv dd,
+.flint-kv .flint-kv-value {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.flint-tag {
+  border: 1px solid var(--flint-line-strong);
+  border-radius: 99px;
+  color: var(--flint-muted);
+  display: inline-block;
+  font-family: var(--flint-font-mono);
+  font-size: var(--flint-text-xs);
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.flint-tag-ok {
+  border-color: var(--flint-success);
+  color: var(--flint-success);
+}
+
+.flint-tag-no {
+  border-color: var(--flint-error-text);
+  color: var(--flint-error-text);
+}
+
+.flint-tag-warn {
+  border-color: var(--flint-warning);
+  color: var(--flint-warning);
+}
+
+.flint-tag-gold {
+  border-color: var(--flint-accent);
+  color: var(--flint-accent);
+}
+
+.flint-checks {
+  display: grid;
+  font-size: var(--flint-text-sm);
+  gap: var(--flint-space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.flint-checks li {
+  align-items: center;
+  display: flex;
+  gap: var(--flint-space-4);
+  justify-content: space-between;
+}
+
+/* --- Progressive detail: the answer first, the reasoning one tap away --- */
+.flint-more summary {
+  color: var(--flint-accent);
+  cursor: pointer;
+  font-size: var(--flint-text-sm);
+  font-weight: var(--flint-weight-strong);
+}
+
+.flint-more p {
+  color: var(--flint-muted);
+  font-size: var(--flint-text-sm);
+  margin: var(--flint-space-2) 0 0;
+}
+
+.flint-more > :not(summary) + * {
+  margin-top: var(--flint-space-3);
+}
+
+/* --- Tables inside a card: roomier rows, and the header never wraps oddly --- */
+.flint-table th,
+.flint-table td {
+  padding: var(--flint-space-3) var(--flint-space-4);
+}
+
+.flint-pager {
+  align-items: center;
+  color: var(--flint-muted);
+  display: flex;
+  font-size: var(--flint-text-sm);
+  gap: var(--flint-space-3);
+  justify-content: space-between;
+  margin-top: var(--flint-space-4);
+}
+
+/* Content a screen reader needs and an eye should not have to read twice. */
+.flint-hide {
+  clip: rect(0 0 0 0);
+  border: 0;
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+/* --- Page opening: the one place a page is allowed to be loud --- */
+.flint-hero {
+  padding: var(--flint-space-8) 0 var(--flint-space-4);
+}
+
+.flint-hero .flint-display {
+  max-width: 18ch;
+}
+
+.flint-hero .flint-lede {
+  max-width: var(--flint-measure);
+}
+
+/* The quiet trailing sentence under a fact list — a caveat, not a paragraph. */
+.flint-fine {
+  color: var(--flint-muted);
+  font-size: var(--flint-text-sm);
+  margin-top: var(--flint-space-4);
+}
+
+/* --- Card variants --- */
+/* A card whose only content is a table: the table owns the padding. */
+.flint-card-flush {
+  overflow: hidden;
+  padding: 0;
+}
+
+.flint-scroll-x {
+  overflow-x: auto;
+}
+
+/* A form card: fields breathe, labels sit above, nothing else competes. */
+.flint-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--flint-space-5);
+}
+
+.flint-form .flint-field {
+  gap: var(--flint-space-2);
+}
+
+/* --- Two-column pages with a companion panel (create, agent) --- */
+.flint-cols-sticky {
+  align-items: start;
+  display: grid;
+  gap: var(--flint-gap);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 20rem);
+}
+
+.flint-sticky {
+  position: sticky;
+  top: calc(var(--flint-header-h) + var(--flint-space-4));
+}
+
+/* A definition list of fact rows, as opposed to a single .flint-kv row. */
+.flint-kv-group {
+  margin: 0;
+}
+
+/* A labelled checkbox: the box and its words are one tap target. */
+.flint-check {
+  align-items: flex-start;
+  color: var(--flint-ink);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--flint-text-sm);
+  gap: var(--flint-space-3);
+}
+
+.flint-check input {
+  accent-color: var(--flint-accent);
+  height: 1.05rem;
+  margin-top: 0.15rem;
+  width: 1.05rem;
+}
+
+/* A table cell that carries prose rather than a figure. */
+.flint-reason {
+  min-width: 12rem;
+}
+
+@media (max-width: 60rem) {
+  /* Below two columns the companion panel has to be seen, not scrolled past:
+     it becomes the ordinary second block in reading order. */
+  .flint-cols-sticky {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .flint-sticky {
+    position: static;
+  }
+}
+
+@media (max-width: 46rem) {
+  .flint-amount {
+    font-size: 2rem;
+  }
+
+  .flint-main {
+    padding-top: var(--flint-space-8);
+  }
+
+  .flint-hero {
+    padding-bottom: 0;
   }
 }
 

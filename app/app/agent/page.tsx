@@ -1,23 +1,25 @@
 /**
  * The test agent's harness page.
  *
- * Acceptance 7.2.4 asks that a refusal be "logged/visible, not silent". This page
- * is the visible half: it runs the agent on demand (POST — it may move money) and
- * renders the decision log, refusals first-class alongside payments.
+ * Acceptance 7.2.4 asks that a refusal be "logged/visible, not silent" — this is the
+ * visible half. The page re-reads the log from disk on every request, so what is on
+ * screen is the durable record rather than a flash message a refresh erases.
  *
- * The page re-reads the log from disk on every request, so what is on screen is the
- * durable record rather than a flash message a refresh erases.
- *
- * Structure only, per Section 9: a real form with real labels, real error states,
- * no styling decisions of my own.
+ * The layout follows how the page is actually read. First: what this agent is allowed
+ * to spend, because that is what makes everything below it make sense. Then the run
+ * control. Then the log — where the interesting part is not the verdict, which is one
+ * word, but the reason, which used to be a column wide enough to break the table on a
+ * phone. Each row now leads with the verdict and opens to the check-by-check
+ * evaluation, so the evidence is one tap away instead of six columns away.
  */
 
-import Link from "next/link";
 import { readConfig } from "@/lib/config";
 import { readDecisions, type DecisionLogEntry } from "@/lib/decision-log";
 import { AGENT_SCENARIOS, policyForScenario } from "@/lib/demo-policy";
+import { formatBaseUnits } from "@/lib/display";
 import { describePolicy } from "@/lib/policy-engine";
-import { explorerTxUrl } from "@/lib/solana";
+import { explorerTxUrl, getConnection } from "@/lib/solana";
+import { getMint } from "@solana/spl-token";
 
 export const dynamic = "force-dynamic";
 
@@ -26,24 +28,55 @@ const OUTCOME_WORDS: Record<DecisionLogEntry["outcome"], string> = {
   refused: "refused",
 };
 
-function EntryRow({ entry }: { entry: DecisionLogEntry }) {
+function EntryRow({
+  entry,
+  amountText,
+}: {
+  entry: DecisionLogEntry;
+  amountText: (baseUnits: string) => string;
+}) {
   return (
     <tr>
       <td>
         <span className="flint-num">
-          {new Date(entry.at).toISOString().replace("T", " ").slice(0, 19)}
+          {new Date(entry.at).toISOString().replace("T", " ").slice(0, 16)}
         </span>
       </td>
       <td>
-        <strong>{OUTCOME_WORDS[entry.outcome]}</strong>
+        <span
+          className={
+            entry.outcome === "allowed" ? "flint-tag flint-tag-ok" : "flint-tag flint-tag-no"
+          }
+        >
+          {OUTCOME_WORDS[entry.outcome]}
+        </span>
       </td>
       <td>
-        <code>{entry.code}</code>
+        <code>{amountText(entry.amount)}</code>
       </td>
-      <td>
-        <code>{entry.amount}</code>
+      <td className="flint-reason">
+        {/* The verdict is the summary; the reasoning is what a reader came for, and
+            it used to be a table column. Collapsed, it is one line; opened, it is
+            the full check-by-check evaluation the log actually stores. */}
+        <details className="flint-more">
+          <summary>
+            <code>{entry.code}</code>
+          </summary>
+          <p>{entry.reason}</p>
+          <ul className="flint-checks" style={{ marginTop: "var(--flint-space-3)" }}>
+            {entry.checks.map((check, index) => (
+              <li key={`${check.code}-${index}`}>
+                <span style={{ whiteSpace: "normal" }}>
+                  <code>{check.code}</code> — {check.detail}
+                </span>
+                <span className={check.passed ? "flint-tag flint-tag-ok" : "flint-tag flint-tag-no"}>
+                  {check.passed ? "pass" : "fail"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
       </td>
-      <td className="flint-muted">{entry.reason}</td>
       <td>
         {entry.settlementTx ? (
           <a href={explorerTxUrl(entry.settlementTx)}>receipt</a>
@@ -72,16 +105,32 @@ export default async function AgentPage({
   }
   if (config === null) {
     return (
-      <div className="flint-shell">
-        <h1 className="text-2xl font-semibold">Test agent</h1>
-        <p className="flint-note mt-3">
-          The agent harness is not configured on this machine.
-          <br />
-          <code>{configError}</code>
-        </p>
+      <div className="flint-stack">
+        <h1 className="flint-page-title">Test agent</h1>
+        <div className="flint-card flint-prose">
+          <p className="flint-muted">The agent harness is not configured on this machine.</p>
+          <p>
+            <code>{configError}</code>
+          </p>
+        </div>
       </div>
     );
   }
+
+  // Amounts read as figures with the symbol rather than raw base units (Phase 5a).
+  // Null only when the mint cannot be read, and then the raw figure plus
+  // "base units" is the honest fallback. The reason column stays verbatim: it is the
+  // recorded decision text, and the policy tests assert on it as evidence.
+  let assetDecimals: number | null = null;
+  try {
+    assetDecimals = (await getMint(getConnection(), config.assetMint)).decimals;
+  } catch {
+    assetDecimals = null;
+  }
+  const amountText = (baseUnits: string): string =>
+    assetDecimals === null
+      ? `${baseUnits} base units`
+      : `${formatBaseUnits(baseUnits, assetDecimals)} ${config.assetSymbol}`;
 
   const entries = readDecisions(config.decisionLogPath, 25);
   const policy = policyForScenario(
@@ -92,43 +141,35 @@ export default async function AgentPage({
   );
 
   return (
-    <div className="flint-shell">
-      <h1 className="text-2xl font-semibold">Test agent — x402 payment harness</h1>
-      <p className="flint-muted mt-2">
-        This agent pays for one HTTP call. It receives a 402 carrying an FRS-1
-        agreement, runs it through a deterministic policy engine, and then either
-        pays through the same escrow program the human flow uses, or refuses and
-        records why. There is no language model anywhere in that decision path.
-      </p>
-
-      <section className="flint-section" aria-labelledby="policy-heading">
-        <h2 id="policy-heading" className="text-lg font-semibold">
-          The agent&rsquo;s policy (paying scenario)
-        </h2>
-        <p className="flint-muted mt-1 text-sm">{describePolicy(policy)}</p>
-        <p className="flint-muted mt-1 text-sm">
-          Price asked by the endpoint: <code>{config.priceBaseUnits}</code> base units
-          of <code>{config.assetSymbol}</code> (<code>{config.assetMint.toBase58()}</code>).
-          The spend cap and session budget are the agent&rsquo;s own limits; the
-          agreement&rsquo;s advertised cap is honoured too, and the stricter of the two
-          applies.
+    <div className="flint-stack">
+      <header>
+        <p className="flint-eyebrow">Agent</p>
+        <h1 className="flint-page-title">Test agent</h1>
+        <p className="flint-muted" style={{ fontSize: "var(--flint-text-lg)" }}>
+          This agent pays for one HTTP call. It receives a 402 carrying an FRS-1 agreement,
+          runs it through a deterministic policy engine, and then either pays through the
+          same escrow program the human flow uses, or refuses and records why. There is no
+          language model anywhere in that decision path.
         </p>
-      </section>
+      </header>
 
-      <section className="flint-section" aria-labelledby="run-heading">
-        <h2 id="run-heading" className="text-lg font-semibold">
-          Run it
-        </h2>
-        <p className="flint-muted mt-1 text-sm">
-          This signs real transactions on Solana devnet and spends a little SOL on
-          rent. It takes a few seconds while devnet confirms.
-        </p>
-        <form method="post" action="/api/agent/run" className="mt-3 flex flex-col gap-3">
+      <div className="flint-card">
+        <div className="flint-row flint-row-between" style={{ alignItems: "start" }}>
           <div>
-            <label htmlFor="scenario" className="block font-medium">
+            <h2 style={{ marginTop: 0 }}>Run it</h2>
+            <p className="flint-muted" style={{ fontSize: "var(--flint-text-sm)" }}>
+              This signs real transactions on Solana devnet and spends a little SOL on rent.
+              It takes a few seconds while devnet confirms.
+            </p>
+          </div>
+        </div>
+
+        <form method="post" action="/api/agent/run" className="flint-form" style={{ marginTop: "var(--flint-space-6)" }}>
+          <div className="flint-field">
+            <label htmlFor="scenario" className="flint-label">
               Scenario
             </label>
-            <select id="scenario" name="scenario" defaultValue="pay" className="mt-1 block">
+            <select id="scenario" name="scenario" defaultValue="pay" className="flint-input">
               {AGENT_SCENARIOS.map((scenario) => (
                 <option key={scenario.value} value={scenario.value}>
                   {scenario.label}
@@ -136,67 +177,105 @@ export default async function AgentPage({
               ))}
             </select>
           </div>
+
+          <label htmlFor="settle" className="flint-check">
+            <input type="checkbox" id="settle" name="settle" defaultChecked />
+            <span>
+              Settle after funding <span className="flint-muted">(release to the recipient, producing the receipt)</span>
+            </span>
+          </label>
+
           <div>
-            <label htmlFor="settle" className="inline-flex items-center gap-2">
-              <input type="checkbox" id="settle" name="settle" defaultChecked />
-              <span>
-                Settle after funding (release to the recipient, producing the receipt)
-              </span>
-            </label>
-          </div>
-          <div>
-            <button type="submit" className="flint-button">
+            <button type="submit" className="flint-button flint-primary">
               Run the test agent
             </button>
           </div>
         </form>
-        {last !== undefined ? (
-          <p className="flint-note mt-3">
+
+        {last === undefined ? null : (
+          <p className="flint-note flint-success" style={{ marginTop: "var(--flint-space-6)" }}>
             Last run: <strong>{last}</strong>. The full record is in the log below.
           </p>
-        ) : null}
-      </section>
-
-      <section className="flint-section" aria-labelledby="log-heading">
-        <h2 id="log-heading" className="text-lg font-semibold">
-          Decision log
-        </h2>
-        <p className="flint-muted mt-1 text-sm">
-          Append-only, at <code>{config.decisionLogPath}</code>. Every decision is
-          recorded with the full check-by-check evaluation, whether it allowed a
-          payment or refused one.
+        )}
+      </div>
+      <div className="flint-card">
+        <h2 style={{ marginTop: 0 }}>The policy it runs</h2>
+        <p className="flint-muted" style={{ fontSize: "var(--flint-text-sm)", marginBottom: "var(--flint-space-4)" }}>
+          Shown for the <code>pay</code> scenario, rendered from the same function the
+          endpoint uses &#32;&#8212; not a description of it.
         </p>
-        {entries.length === 0 ? (
-          <p className="flint-note mt-3">
-            No decisions yet. Run the agent above and the first entry will appear here.
+        <dl className="flint-kv-group">
+          <div className="flint-kv">
+            <dt>Spend cap</dt>
+            <dd className="flint-num">{amountText(policy.spendCap)}</dd>
+          </div>
+          <div className="flint-kv">
+            <dt>Session budget</dt>
+            <dd className="flint-num">{amountText(policy.sessionBudget)}</dd>
+          </div>
+          <div className="flint-kv">
+            <dt>Price asked by the endpoint</dt>
+            <dd className="flint-num">{amountText(config.priceBaseUnits)}</dd>
+          </div>
+          <div className="flint-kv">
+            <dt>Allowed recipients</dt>
+            <dd className="flint-num">{policy.recipientAllowlist.length}</dd>
+          </div>
+          <div className="flint-kv">
+            <dt>Allowed assets</dt>
+            <dd className="flint-num">{policy.assetAllowlist.length}</dd>
+          </div>
+          <div className="flint-kv">
+            <dt>Maximum validity</dt>
+            <dd className="flint-num">{policy.maxTtlSeconds}s</dd>
+          </div>
+        </dl>
+        <details className="flint-more" style={{ marginTop: "var(--flint-space-4)" }}>
+          <summary>Why the cap can come out smaller than it looks</summary>
+          <p>
+            The spend cap and session budget are the agent&#39;s own limits; the
+            agreement&#39;s advertised cap is honoured too, and the stricter of the two
+            applies. The engine reports the figure it actually enforced:{" "}
+            <span className="flint-num">{describePolicy(policy)}</span>
           </p>
+        </details>
+      </div>
+
+      <section className="flint-block" aria-labelledby="log-heading">
+        <h2 id="log-heading">Decision log</h2>
+        {entries.length === 0 ? (
+          <div className="flint-card">
+            <p className="flint-muted" style={{ margin: 0 }}>
+              No decisions yet. Run the agent above and the first entry will appear here.
+            </p>
+          </div>
         ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="flint-table">
-              <caption>Most recent {entries.length} decisions</caption>
-              <thead>
-                <tr>
-                  <th scope="col">When (UTC)</th>
-                  <th scope="col">Outcome</th>
-                  <th scope="col">Code</th>
-                  <th scope="col">Amount</th>
-                  <th scope="col">Reason</th>
-                  <th scope="col">On chain</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...entries].reverse().map((entry, index) => (
-                  <EntryRow key={`${entry.at}-${index}`} entry={entry} />
-                ))}
-              </tbody>
-            </table>
+          <div className="flint-card flint-card-flush">
+            <div className="flint-scroll-x">
+              <table className="flint-table">
+                <caption>
+                  Most recent {entries.length} decisions, append-only at{" "}
+                  <code>{config.decisionLogPath}</code>
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">When (UTC)</th>
+                    <th scope="col">Outcome</th>
+                    <th scope="col">Amount</th>
+                    <th scope="col">Why</th>
+                    <th scope="col">On chain</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...entries].reverse().map((entry, index) => (
+                    <EntryRow key={`${entry.at}-${index}`} entry={entry} amountText={amountText} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </section>
-
-      <p className="mt-4">
-        <Link href="/">Back to the Flint overview</Link>
-      </p>
     </div>
   );
 }

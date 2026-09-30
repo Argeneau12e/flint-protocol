@@ -12,8 +12,8 @@
 
 "use client";
 
-import type { ReactNode } from "react";
-import { useFlintWallet } from "@/lib/wallet";
+import { useState, type ReactNode } from "react";
+import { useFlintWallet, useWalletIssue } from "@/lib/wallet";
 
 /** Truncates a base58 address for display, keeping both ends recognisable. */
 export function shortAddress(address: string | null): string {
@@ -22,34 +22,71 @@ export function shortAddress(address: string | null): string {
 }
 
 /**
- * Connect / disconnect.
+ * Connect / disconnect, with a picker when several wallets are installed.
  *
- * Names the wallet it will prompt with, because "Connect" alone leaves a person
- * unable to tell what is about to appear on their screen.
+ * The names come from Wallet Standard detection (never an assumed Phantom),
+ * and a failure at any point lands in the provider's banner via
+ * `useWalletIssue` — which guarantees a specific, non-empty message per case
+ * (not installed / declined / locked / unknown) and logs the full error.
  */
 export function ConnectButton() {
-  const { address, connected, connecting, connect, disconnect, label } = useFlintWallet();
+  const { address, connected, connecting, connectByName, disconnect, available } = useFlintWallet();
+  const { report, clear } = useWalletIssue();
+  const [picking, setPicking] = useState(false);
 
-  if (!connected) {
+  if (connected) {
+    return (
+      <span className="flint-connect">
+        <span className="flint-muted">
+          Connected: <code title={address ?? ""}>{shortAddress(address)}</code>
+        </span>
+        <button type="button" className="flint-button" onClick={() => void disconnect()}>
+          Disconnect
+        </button>
+      </span>
+    );
+  }
+
+  const attempt = (name: string) => {
+    clear();
+    setPicking(false);
+    connectByName(name);
+  };
+
+  // No connectable wallet in this browser: saying so is the whole action.
+  if (available.length === 0) {
     return (
       <span className="flint-connect">
         <button
           type="button"
           className="flint-button"
-          disabled={connecting}
-          onClick={() => {
-            // Selection is a promise to open a wallet; a rejected one is a dead
-            // end unless it is said out loud, so it is captured as text.
-            void connect().catch((cause: unknown) => {
-              window.alert(
-                cause instanceof Error
-                  ? `Could not connect: ${cause.message}`
-                  : "Could not connect to a wallet.",
-              );
-            });
-          }}
+          onClick={() => report(new Error("No Solana wallet was found in this browser."))}
         >
-          {connecting ? "Connecting…" : `Connect wallet${label === null ? "" : ` (${label})`}`}
+          Connect wallet
+        </button>
+      </span>
+    );
+  }
+
+  // Several wallets installed: a picker, never a guess.
+  if (available.length > 1 && picking) {
+    return (
+      <span className="flint-connect">
+        <span role="group" aria-label="Choose a wallet to connect">
+          {available.map((name) => (
+            <button
+              key={name}
+              type="button"
+              className="flint-button"
+              disabled={connecting}
+              onClick={() => attempt(name)}
+            >
+              {connecting ? "Connecting…" : name}
+            </button>
+          ))}
+        </span>
+        <button type="button" className="flint-button" onClick={() => setPicking(false)}>
+          Cancel
         </button>
       </span>
     );
@@ -57,13 +94,49 @@ export function ConnectButton() {
 
   return (
     <span className="flint-connect">
-      <span className="flint-muted">
-        Connected: <code title={address ?? ""}>{shortAddress(address)}</code>
-      </span>
-      <button type="button" className="flint-button" onClick={() => void disconnect()}>
-        Disconnect
+      <button
+        type="button"
+        className="flint-button"
+        disabled={connecting}
+        onClick={() => {
+          if (available.length > 1) setPicking(true);
+          else attempt(available[0]);
+        }}
+      >
+        {connecting
+          ? "Connecting…"
+          : available.length > 1
+            ? "Connect wallet"
+            : `Connect wallet (${available[0]})`}
       </button>
     </span>
+  );
+}
+
+/**
+ * Who the page will sign with, without offering a second way to connect.
+ *
+ * `ConnectButton` belongs in the header and nowhere else: connection is a
+ * property of the session, and a page that repeats the control asks the person to
+ * decide which of two identical buttons to use — and gives a keyboard, a screen
+ * reader, and any test that selects by role an ambiguous target. Where a page
+ * needs to say *which* wallet its buttons will run in, it says that here instead.
+ */
+export function WalletStatus({ action }: { action: string }) {
+  const { address, connected } = useFlintWallet();
+
+  if (!connected) {
+    return (
+      <p className="flint-hint">
+        Connect a wallet in the bar above — {action} signs with that wallet.
+      </p>
+    );
+  }
+
+  return (
+    <p className="flint-muted">
+      Signing as <code title={address ?? ""}>{shortAddress(address)}</code>
+    </p>
   );
 }
 

@@ -57,30 +57,29 @@ export default async function NewAgreementPage() {
 
   if (config === null) {
     return (
-      <div className="flint-shell">
-        <h1 className="text-2xl font-semibold">Create a payment agreement</h1>
-        <p className="flint-note mt-3">
-          This deployment is not configured, so agreements cannot be created.
-          <br />
-          <code>{configError}</code>
-        </p>
-        <p className="mt-3">
-          <Link href="/">Back to the Flint overview</Link>
-        </p>
+      <div className="flint-stack">
+        <header>
+          <p className="flint-eyebrow">Recipient</p>
+          <h1 className="flint-page-title">Create a payment agreement</h1>
+        </header>
+        <div className="flint-card flint-measure">
+          <p className="flint-note flint-error">
+            This deployment is not configured, so agreements cannot be created.
+            <br />
+            <code>{configError}</code>
+          </p>
+          <p style={{ marginTop: "var(--flint-space-4)" }}>
+            <Link href="/">Back to the Flint overview</Link>
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flint-shell">
-      <h1 className="text-2xl font-semibold">Create a payment agreement</h1>
-      <p className="flint-muted mt-2">
-        You are the <strong>recipient</strong>: you set the terms and share the
-        result. Your connected wallet signs the agreement and pays a small amount
-        of rent to open it. No payer is named, because whoever funds the agreement
-        first becomes the payer — permanently.
-      </p>
-
+    <>
+      {/* The form owns the page heading and the explanation of who is signing: it
+          is the component that knows which step is on screen. */}
       <CreateForm
         assetMint={config.assetMint.toBase58()}
         assetSymbol={config.assetSymbol}
@@ -90,38 +89,37 @@ export default async function NewAgreementPage() {
         cluster={CLUSTER}
       />
 
-      <section className="flint-section" aria-labelledby="what-next">
-        <h2 id="what-next" className="text-lg font-semibold">
-          What happens after you share it
-        </h2>
-        <ol className="flint-list flint-muted mt-2">
-          <li>A payer opens the Blink in a Solana wallet and approves it.</li>
-          <li>
-            The exact amount moves into the agreement&rsquo;s own escrow account.
-            The agreement becomes <code>funded</code>, and that wallet is recorded
-            as the payer.
-          </li>
-          <li>
-            The payer releases the money to you by signing a confirmation. That
-            signature is the receipt, and it can be verified by anyone afterwards.
-          </li>
-          <li>
-            If the expiry passes with no confirmation, the money goes back to the
-            payer instead — and anyone can trigger that refund, including you.
-          </li>
-        </ol>
-        <p className="flint-note mt-3 text-sm">
-          <strong>About the condition:</strong> v1 enforces exactly one condition
-          type, <code>manual-confirmation</code> — the payer signs to release the
-          funds. There is no automated or oracle-checked condition in this build,
-          so nothing about the work itself is verified on chain. A receipt proves
-          the payment happened; it does not prove the work was delivered.
-        </p>
+      <section className="flint-block" aria-labelledby="what-next">
+        <h2 id="what-next">What happens after you share it</h2>
+        <div className="flint-card">
+          <ol className="flint-list flint-muted">
+            <li>A payer opens the Blink in a Solana wallet and approves it.</li>
+            <li>
+              The exact amount moves into the agreement&rsquo;s own escrow account.
+              The agreement becomes <code>funded</code>, and that wallet is recorded
+              as the payer.
+            </li>
+            <li>
+              The payer releases the money to you by signing a confirmation. That
+              signature is the receipt, and it can be verified by anyone afterwards.
+            </li>
+            <li>
+              If the expiry passes with no confirmation, the money goes back to the
+              payer instead — and anyone can trigger that refund, including you.
+            </li>
+          </ol>
+          <p
+            className="flint-note"
+            style={{ fontSize: "var(--flint-text-sm)", marginTop: "var(--flint-space-4)" }}
+          >
+            <strong>About the condition:</strong> v1 enforces exactly one condition
+            type, <code>manual-confirmation</code> — the payer signs to release the
+            funds. There is no automated or oracle-checked condition in this build,
+            so nothing about the work itself is verified on chain. A receipt proves
+            the payment happened; it does not prove the work was delivered.
+          </p>
+        </div>
       </section>
-
-      <p className="mt-4">
-        <Link href="/">Back to the Flint overview</Link>
-      </p>
-    </div>
+    </>
   );
 }

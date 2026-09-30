@@ -72,9 +72,10 @@ flint/
 │   ├── lib/agent.ts               # the test agent
 │   ├── lib/solana.ts              # devnet cluster configuration
 │   └── components/
-├── scripts/provision-devnet.mjs  # wallets, devnet test mint, app/.env.local
+├── scripts/provision-devnet.mjs  # wallets, TST test mint, USDC demo config, env files
 ├── scripts/sync-idl.mjs           # copies the generated IDL into app/lib/idl
 ├── tests/agent/                   # Phase 2 suites: policy (hermetic) + devnet
+├── tests/web/                     # browser suites: crawl, smoke, wallet connect (Playwright)
 ├── Anchor.toml                     # cluster = devnet
 ├── Cargo.toml                      # Rust workspace
 └── package.json                    # root package: Anchor/mocha tests
@@ -163,19 +164,44 @@ The devnet fixture is created by a script, not by hand. It is idempotent — re-
 it tops up rather than recreating, so wallets keep their history:
 
 ```bash
-# One-time per machine: two devnet wallets, a devnet test mint, and app/.env.local
+# One-time per machine: two devnet wallets, the throwaway TST mint pinned for
+# the automated suites, Circle devnet USDC configured for the demo, and both
+# env files (app/.env.local + tests/.env.test)
 FLINT_DEPLOYER_KEYPAIR='\\wsl.localhost\Ubuntu\home\<you>\.config\solana\id.json' \
   node scripts/provision-devnet.mjs
 
 npm run test:policy        # hermetic: policy engine only, no chain, no network
-npm run test:agent         # devnet end to end (402, pay, settle, refuse, verify)
+npm run test:agent         # devnet end to end (402, pay, settle, refuse, verify, crawl, smoke)
 npm run typecheck          # program tests + app lib + API routes
 ```
 
-`app/.env.local` (gitignored) holds the program id, both keypair paths, the asset
-mint, the price and the decision-log path. The keypairs live in `app/.keys/`, also
-gitignored. After changing the program, run `npm run sync:idl` in `app/` to copy the
-regenerated IDL into `app/lib/idl/`.
+`test:agent` ends with three browser suites (`tests/web/`) that build the app, serve it,
+and drive a real Chromium: a link crawl, a console-error smoke pass, and the wallet
+suite, which installs a mock Wallet Standard wallet into the page and signs a real
+devnet create transaction. One-time per machine they need `npx playwright install
+chromium`. They skip nothing — if Chromium is missing they fail loudly.
+
+`app/.env.local` (gitignored) holds the program id, both keypair paths, the demo
+asset, the price and the decision-log path; `tests/.env.test` (gitignored,
+written by the same script) pins the automated suites to the throwaway TST mint
+so tests never mint or spend the demo asset. The keypairs live in `app/.keys/`,
+also gitignored. After changing the program, run `npm run sync:idl` in `app/` to
+copy the regenerated IDL into `app/lib/idl/`.
+
+**Demo asset: devnet USDC.** The demo configuration uses Circle's devnet USDC
+mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` (6 decimals — confirmed on
+[Circle's contract address page](https://developers.circle.com/stablecoins/usdc-contract-addresses),
+"Solana Devnet", not from memory). The service wallet cannot mint it: Circle is
+the mint authority. Before running the human or agent demos, fund the paying
+wallets from [Circle's public faucet](https://developers.circle.com/wallets/developer-console-faucet)
+— 20 USDC per address every 2 hours, no account required:
+
+- **agent wallet** (address of `app/.keys/agent.json`): pays the x402 price
+  (1 USDC per call at `FLINT_PRICE_BASE_UNITS=1000000`);
+- **the payer in a human demo** (your Phantom or another test wallet): funds
+  the Blink;
+- SOL for fees and rent still comes from `provision-devnet.mjs` or
+  faucet.solana.com, as before.
 
 Devnet configuration already applied: RPC `https://api.devnet.solana.com`,
 keypair `~/.config/solana/id.json`, program id

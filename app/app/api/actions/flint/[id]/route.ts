@@ -166,7 +166,7 @@ export async function GET(
   const title = agreement.title === "" ? "Flint payment agreement" : agreement.title;
 
   const description = [
-    `${amount} (${agreement.amount} base units) to ${agreement.recipientAddress}, held in escrow.`,
+    `${amount} to ${agreement.recipientAddress}, held in escrow.`,
     expiryPhrase(view),
     "Paying means your wallet becomes the payer, permanently: you can release the money to the recipient at any point before it expires, and if you do nothing the recipient never gets it. If it expires unconfirmed, the money can be refunded to you by anyone.",
     reason ?? "",

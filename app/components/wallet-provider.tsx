@@ -1,62 +1,73 @@
 /**
- * The wallet provider for the human flow (Phase 3).
+ * The wallet provider for the human flow (Phase 3), rebuilt for Phase 5a.
  *
- * Phantom-first, per Section 6.2, and deliberately *not* the wallet-adapter UI
- * kit's modal. Two reasons:
+ * Two decisions carry the real-browser fixes:
  *
- *   1. Section 9 requires wallet interactions to say what is happening and what
- *      the person is approving, in plain language. A third-party modal renders
- *      its own copy inside a shadow DOM we cannot annotate, so a person would
- *      approve a transaction with no indication of what it does. The connect
- *      button is ours instead, and says so.
- *   2. The adapter is still what talks to Phantom — that part is not worth
- *      rewriting. Only the chrome is ours.
+ *   1. **No explicit adapters.** Modern Phantom registers itself through Wallet
+ *      Standard, and wallet-adapter 0.15 auto-detects every such wallet via
+ *      `useStandardWalletAdapters`. Passing a `PhantomWalletAdapter` alongside
+ *      the detected one produced the duplicate-adapter warning and a broken
+ *      connect path in real browsers — so the list is empty, detection does the
+ *      work, and several installed wallets all show up (the connect control
+ *      turns them into a picker rather than assuming one).
+ *   2. **The banner can never be empty.** Every failure — the provider's own
+ *      `onError`, a rejected `connect()` in a button, an autoConnect miss — is
+ *      reported through `WalletIssueContext`, which logs the full error
+ *      (name, message, nested `cause` / `error`) to the console and surfaces
+ *      only `describeWalletFailure(...)`, a function that cannot return "".
  *
- * `autoConnect` is on: reconnecting a wallet a person already authorised should
- * not be a second prompt asking them to confirm they meant to come back.
- *
- * Errors are surfaced as state rather than only logged. A wallet that fails to
- * load is a dead end otherwise — the page would render buttons that do nothing.
+ * The connect control is still Flint's own rather than the adapter kit's modal
+ * (Section 9: the copy around a signature is part of the product). `autoConnect`
+ * stays on: a returning wallet should not be re-prompted to prove it is still
+ * here.
  */
 
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { WalletProvider } from "@solana/wallet-adapter-react";
-import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
+import {
+  WalletIssueContext,
+  describeWalletFailure,
+  logWalletFailure,
+  type WalletIssue,
+} from "@/lib/wallet";
 import { COMMITMENT, RPC_URL } from "@/lib/solana";
 
 export function FlintWalletProvider({ children }: { children: ReactNode }) {
-  const wallets = useMemo(() => [new PhantomWalletAdapter()], []);
-  const [error, setError] = useState<string | null>(null);
+  // Empty on purpose: see decision 1 above. Detection is the adapter library's
+  // job, and this identity must stay stable so `WalletProvider` does not
+  // rebuild its adapter list on every render.
+  const wallets = useMemo(() => [], []);
+  const [issue, setIssue] = useState<WalletIssue | null>(null);
+
+  const report = useCallback((cause: unknown) => {
+    logWalletFailure(cause);
+    setIssue({ message: describeWalletFailure(cause) });
+  }, []);
+  const clear = useCallback(() => setIssue(null), []);
+  const issueApi = useMemo(() => ({ issue, report, clear }), [issue, report, clear]);
 
   return (
-    <WalletProvider
-      wallets={wallets}
-      autoConnect
-      onError={(cause) => {
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : "The wallet could not be initialised in this browser.",
-        );
-      }}
-      /*
-       * The connect control is Flint's own rather than the adapter kit's modal, and
-       * it lives in the page flow next to the action it enables — not in a header
-       * bar, where a person would be asked to connect before they have seen what
-       * they are connecting for. Its copy names the specific wallet it will prompt
-       * with and is part of the product's language; changing that wording changes
-       * what a person is agreeing to, so it is not a styling value.
-       */
-    >
-      {error === null ? null : (
-        <p role="alert" className="flint-note flint-error">
-          Wallet problem: {error}
-        </p>
-      )}
-      {children}
-    </WalletProvider>
+    <WalletIssueContext.Provider value={issueApi}>
+      <WalletProvider wallets={wallets} autoConnect onError={(cause) => report(cause)}>
+        {/*
+         * A wallet failure is the one message that should interrupt, so it is
+         * pinned under the header rather than dropped wherever the page happens
+         * to be scrolled. It stays *first* in the DOM, which is also what makes
+         * it the banner a test or a screen reader finds before any inline field
+         * error.
+         */}
+        {issue === null ? null : (
+          <div className="flint-alert-bar">
+            <p role="alert" className="flint-note flint-error">
+              Wallet problem: {issue.message || "The wallet failed without a message — see the console."}
+            </p>
+          </div>
+        )}
+        {children}
+      </WalletProvider>
+    </WalletIssueContext.Provider>
   );
 }
 

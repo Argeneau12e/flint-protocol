@@ -45,19 +45,33 @@ import { Term } from "@/components/agreement-ui";
 
 export const dynamic = "force-dynamic";
 
+/** The state as a tag. The tone says which way the money went, not just where it is. */
+const STATUS_TONES: Record<string, string> = {
+  pending: "flint-tag-gold",
+  funded: "flint-tag-gold",
+  released: "flint-tag-ok",
+  refunded: "flint-tag-warn",
+  cancelled: "flint-tag-warn",
+};
+
 /** Both failure modes a link can have, stated rather than thrown at a person. */
 function LinkProblem({ heading, children }: { heading: string; children: React.ReactNode }) {
   return (
-    <div className="flint-shell">
-      <h1 className="text-2xl font-semibold">{heading}</h1>
-      <p className="flint-note mt-3">{children}</p>
-      <p className="mt-3">
-        A Flint link carries both the agreement id and the recipient&rsquo;s
-        address, because together they are the agreement&rsquo;s identity on chain.
-      </p>
-      <p className="mt-3">
-        <Link href="/">Back to the Flint overview</Link>
-      </p>
+    <div className="flint-stack">
+      <header>
+        <p className="flint-eyebrow">Agreement</p>
+        <h1 className="flint-page-title">{heading}</h1>
+      </header>
+      <div className="flint-card flint-measure">
+        <p className="flint-note flint-error">{children}</p>
+        <p className="flint-muted" style={{ marginTop: "var(--flint-space-3)" }}>
+          A Flint link carries both the agreement id and the recipient&rsquo;s
+          address, because together they are the agreement&rsquo;s identity on chain.
+        </p>
+        <p style={{ marginTop: "var(--flint-space-4)" }}>
+          <Link href="/">Back to the Flint overview</Link>
+        </p>
+      </div>
     </div>
   );
 }
@@ -109,22 +123,28 @@ export default async function AgreementPage({
     .slice(0, 19);
 
   return (
-    <div className="flint-shell">
-      <h1 className="text-2xl font-semibold">
-        {agreement.title === "" ? "Payment agreement" : agreement.title}
-      </h1>
-      <p className="flint-muted mt-2">
-        An FRS-1 payment agreement. Everything below was read from Solana devnet
-        when this page loaded, and the status is recomputed from the account
-        rather than remembered by this page.
-      </p>
+    <div className="flint-stack">
+      <header>
+        <p className="flint-eyebrow">Agreement</p>
+        <h1 className="flint-page-title">
+          {agreement.title === "" ? "Payment agreement" : agreement.title}
+        </h1>
+        <p className="flint-muted" style={{ marginTop: "var(--flint-space-3)" }}>
+          An FRS-1 payment agreement. Everything below was read from Solana devnet
+          when this page loaded, and the status is recomputed from the account
+          rather than remembered by this page.
+        </p>
 
-      <p className="mt-2">
-        Status: <code>{agreement.status}</code>
-        {view.expired && agreement.status === "funded" ? (
-          <span className="flint-badge flint-badge-terminal">expired</span>
-        ) : null}
-      </p>
+        <p className="flint-row" style={{ marginTop: "var(--flint-space-4)" }}>
+          <span className="flint-muted">Status</span>
+          <span className={`flint-tag ${STATUS_TONES[agreement.status] ?? ""}`}>
+            {agreement.status}
+          </span>
+          {view.expired && agreement.status === "funded" ? (
+            <span className="flint-tag flint-tag-warn">expired</span>
+          ) : null}
+        </p>
+      </header>
 
       <SettlementPanel
         id={view.id}
@@ -138,14 +158,11 @@ export default async function AgreementPage({
         secondsUntilExpiry={view.secondsUntilExpiry}
       />
 
-      <section className="flint-section" aria-labelledby="terms-heading">
-        <h2 id="terms-heading" className="text-lg font-semibold">
-          The terms
-        </h2>
-        <dl className="flint-terms mt-2">
+      <section className="flint-card" aria-labelledby="terms-heading">
+        <h2 id="terms-heading">The terms</h2>
+        <dl className="flint-terms" style={{ marginTop: "var(--flint-space-4)" }}>
           <Term term="Amount">
-            <span className="flint-num">{view.amountDisplay}</span> {view.symbol}{" "}
-            <span className="flint-muted flint-num">({agreement.amount} base units)</span>
+            <span className="flint-num">{view.amountDisplay}</span> {view.symbol}
           </Term>
           <Term term="Asset">
             <code>{agreement.asset}</code>
@@ -195,32 +212,26 @@ export default async function AgreementPage({
         </dl>
       </section>
 
-      <section className="flint-section" aria-labelledby="receipt-heading">
-        <h2 id="receipt-heading" className="text-lg font-semibold">
-          Receipts
-        </h2>
-        <p className="flint-muted mt-1 text-sm">
+      <section className="flint-card flint-stack" aria-labelledby="receipt-heading">
+        <h2 id="receipt-heading">Receipts</h2>
+        <p className="flint-muted">
           A receipt is the <em>settlement</em> transaction — the release or the
           refund. Flint stores none: it is derived from the chain, so paste the
           signature into the verification page and it will be recomputed against
           the account rather than trusted.
         </p>
-        <p className="mt-2 text-sm">
-          <Link className="flint-button" href="/verify/">
+        <p>
+          <Link className="flint-button flint-primary" href="/verify/">
             Verify a receipt
           </Link>
         </p>
-        <p className="flint-muted mt-3 text-sm">
+        <p className="flint-muted">
           A receipt proves a specific amount moved under specific terms, authorised
           by the address the program required. It does not prove the work was
           actually delivered — that is the payer&rsquo;s attestation, and no
           signature turns it into a fact.
         </p>
       </section>
-
-      <p className="mt-4">
-        <Link href="/">Back to the Flint overview</Link>
-      </p>
     </div>
   );
 }

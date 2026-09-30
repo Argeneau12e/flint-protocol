@@ -3,6 +3,9 @@ import Link from "next/link";
 import { Cormorant_Garamond, DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { FlintWalletProvider } from "@/components/wallet-provider";
+import { SiteNav } from "@/components/site-nav";
+import { ConnectButton } from "@/components/agreement-ui";
+import { CLUSTER } from "@/lib/solana";
 
 /*
  * Fonts are self-hosted at build time by `next/font`, which is why the stylesheet
@@ -63,48 +66,53 @@ export default function RootLayout({
       className={`${display.variable} ${body.variable} ${mono.variable}`}
     >
       <body>
-        <header className="flint-header">
-          <div className="flint-header-inner">
-            {/*
-             * The lockup links home: the mark is the most obvious "back to the
-             * start" affordance there is, and the overview page is where a person
-             * arrives at an unfamiliar shared link.
-             */}
-            <Link href="/" className="flint-brand-lockup">
+        {/*
+         * The provider wraps the header as well as the page: connecting is a
+         * property of the session, and the bar is where a person expects to see
+         * and change it. Mounting it per-page would drop the connection on every
+         * navigation, which looks like the wallet disconnected on its own.
+         */}
+        <FlintWalletProvider>
+          <header className="flint-header">
+            <div className="flint-header-inner">
               {/*
-               * The emblem is decorative here — the wordmark beside it already
-               * says the name, so alt text on both would make a screen reader
-               * announce "Flint" twice. The transparent variant is correct on this
-               * background by construction: the page field *is* the logo's field.
+               * The lockup links home: the mark is the most obvious "back to the
+               * start" affordance there is. The emblem is decorative — the
+               * wordmark beside it already says the name, so alt text on both
+               * would make a screen reader announce "Flint" twice.
                */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/brand/flint-emblem-transparent.svg"
-                alt=""
-                aria-hidden="true"
-                className="flint-emblem"
-                width={36}
-                height={36}
-              />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/brand/flint-wordmark-A-transparent.svg"
-                alt="Flint"
-                className="flint-wordmark"
-                width={96}
-                height={48}
-              />
-            </Link>
+              <Link href="/" className="flint-brand-lockup">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/brand/flint-emblem-transparent.svg"
+                  alt=""
+                  aria-hidden="true"
+                  className="flint-emblem"
+                  width={36}
+                  height={36}
+                />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/brand/flint-wordmark-A-transparent.svg"
+                  alt="Flint"
+                  className="flint-wordmark"
+                  width={96}
+                  height={48}
+                />
+              </Link>
 
-            <p className="flint-tagline">
-              FRS-1 payment agreements on Solana · devnet only
-            </p>
-          </div>
-        </header>
+              <SiteNav />
 
-        <main className="flint-main">
-          <FlintWalletProvider>{children}</FlintWalletProvider>
-        </main>
+              <div className="flint-header-actions">
+                {/* The cluster is a fact about this deployment, not a setting. */}
+                <span className="flint-cluster">{CLUSTER}</span>
+                <ConnectButton />
+              </div>
+            </div>
+          </header>
+
+          <main className="flint-main">{children}</main>
+        </FlintWalletProvider>
       </body>
     </html>
   );

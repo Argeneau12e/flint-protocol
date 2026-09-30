@@ -29,6 +29,41 @@ import {
 import type { Frs1Agreement } from "./frs1-types";
 import { agreementPda, readAgreement } from "./flint-program";
 import { toFrs1Agreement, type DecodableAgreement } from "./frs1-chain";
+import { formatBaseUnits } from "./display";
+
+/**
+ * How an amount should read *to a person* in a check detail (Phase 5a).
+ *
+ * Optional everywhere: with no display configured (the x402 responder, every
+ * test) the detail strings stay byte-identical to before — raw base units,
+ * which is the correct machine-facing form. The verification page passes its
+ * deployment's mint and symbol so the same check reads "2.5 USDC" instead.
+ * An agreement on a *different* mint is deliberately left unformatted: a
+ * symbol that was never confirmed for a mint is a lie a receipt must not tell.
+ */
+export interface VerifyDisplay {
+  /** Base58 mint this deployment prices in. */
+  mint: string;
+  /** Decimals of that mint, read from chain. */
+  decimals: number;
+  /** Display-only symbol for that mint (Section 4.5). */
+  symbol?: string;
+}
+
+/** Formats one amount for a human, or as raw base units when it cannot be trusted. */
+function shownAmount(
+  value: string | bigint,
+  display: VerifyDisplay | undefined,
+  mint: string,
+): string {
+  const raw = value.toString();
+  if (display === undefined || mint !== display.mint) return `${raw} base units`;
+  const negative = raw.startsWith("-");
+  const digits = negative ? raw.slice(1) : raw;
+  const figure = formatBaseUnits(digits, display.decimals);
+  const symbol = display.symbol ? ` ${display.symbol}` : "";
+  return `${negative ? "-" : ""}${figure}${symbol}`;
+}
 
 /** One named check in a report. Passes are recorded too — the report is evidence. */
 export interface VerificationCheck {
@@ -444,6 +479,7 @@ export async function verifyFunding(
   programId: PublicKey,
   fundingSignature: string,
   claimedPda?: string,
+  display?: VerifyDisplay,
 ): Promise<PaymentVerification> {
   const c = makeChecks();
   const loaded = await loadTransaction(connection, fundingSignature);
@@ -504,12 +540,14 @@ export async function verifyFunding(
 
   const escrowed = BigInt(facts.escrowBalance ?? "0");
   const agreed = BigInt(agreement.amount);
+  const amountText = (value: string | bigint): string =>
+    shownAmount(value, display, agreement.asset);
   c.add(
     "escrow_holds_agreed_amount",
     escrowed === 0n || escrowed >= agreed,
     escrowed === 0n
       ? "Escrow is empty, consistent with an already-settled agreement."
-      : `Escrow holds ${escrowed} base units against an agreed ${agreed}.`,
+      : `Escrow holds ${amountText(escrowed)} against an agreed ${amountText(agreed)}.`,
   );
 
   const funder = fund.keys[0];
@@ -538,6 +576,7 @@ export async function verifySettlement(
   connection: Connection,
   programId: PublicKey,
   signature: string,
+  display?: VerifyDisplay,
 ): Promise<VerificationReport> {
   const c = makeChecks();
   const loaded = await loadTransaction(connection, signature);
@@ -624,6 +663,8 @@ export async function verifySettlement(
 
   // ---- what the money actually did, per the transaction's own balance deltas ----
   const agreed = BigInt(agreement.amount);
+  const amountText = (value: string | bigint): string =>
+    shownAmount(value, display, agreement.asset);
   const deltas = loaded.transaction.deltas.filter(
     (delta) => delta.mint === agreement.asset,
   );
@@ -635,8 +676,10 @@ export async function verifySettlement(
     "escrow_debited_agreed_amount",
     debitedExactly,
     debitedExactly
-      ? `The escrow was debited exactly the agreed ${agreed} base units by this transaction.`
-      : `The escrow's change in this transaction was ${escrowDelta?.delta.toString() ?? "absent"}, not -${agreed}.`,
+      ? `The escrow was debited exactly the agreed ${amountText(agreed)} by this transaction.`
+      : `The escrow's change in this transaction was ${
+          escrowDelta === undefined ? "absent" : amountText(escrowDelta.delta)
+        }, not -${amountText(agreed)}.`,
   );
 
   // Whoever was supposed to be paid must be an account that gained the agreed
@@ -648,16 +691,16 @@ export async function verifySettlement(
   let creditDetail = "No account gained the agreed amount in the agreed asset.";
   for (const credit of deltas.filter((delta) => delta.delta > 0n)) {
     if (credit.delta !== agreed) {
-      creditDetail = `${credit.account.toBase58()} gained ${credit.delta} base units, not ${agreed}.`;
+      creditDetail = `${credit.account.toBase58()} gained ${amountText(credit.delta)}, not ${amountText(agreed)}.`;
       continue;
     }
     const owner = await tokenAccountOwner(connection, credit.account);
     if (owner === counterparty) {
       credited = true;
-      creditDetail = `${credit.account.toBase58()} gained the agreed ${agreed} base units and is owned by the stored ${roleName}.`;
+      creditDetail = `${credit.account.toBase58()} gained the agreed ${amountText(agreed)} and is owned by the stored ${roleName}.`;
       break;
     }
-    creditDetail = `${credit.account.toBase58()} gained ${agreed} base units but is owned by ${owner ?? "an unreadable account"}, not the stored ${roleName}.`;
+    creditDetail = `${credit.account.toBase58()} gained ${amountText(agreed)} but is owned by ${owner ?? "an unreadable account"}, not the stored ${roleName}.`;
   }
   c.add(
     kind === "release"
@@ -673,7 +716,7 @@ export async function verifySettlement(
     escrowEmpty,
     escrowEmpty
       ? "Escrow is empty: the full amount left custody."
-      : `The escrow still holds ${facts.escrowBalance} base units.`,
+      : `The escrow still holds ${amountText(facts.escrowBalance ?? "0")}.`,
   );
 
   if (kind === "release") {

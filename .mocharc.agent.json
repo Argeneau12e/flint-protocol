@@ -5,7 +5,10 @@
     "tests/agent/policy-engine.test.ts",
     "tests/agent/x402-flow.test.ts",
     "tests/human/human-flow.test.ts",
-    "tests/agent/x402-throttle.test.ts"
+    "tests/agent/x402-throttle.test.ts",
+    "tests/web/crawl.test.ts",
+    "tests/web/smoke.test.ts",
+    "tests/web/wallet.test.ts"
   ],
   "timeout": 900000,
   "slow": 20000

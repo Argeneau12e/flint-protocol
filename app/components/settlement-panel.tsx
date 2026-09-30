@@ -32,7 +32,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ActionFeedback, ConnectButton, shortAddress } from "@/components/agreement-ui";
+import { ActionFeedback, shortAddress, WalletStatus } from "@/components/agreement-ui";
 import { useFlintWallet, useTransactionAction } from "@/lib/wallet";
 import type { AgreementStatus } from "@/lib/frs1-types";
 
@@ -94,16 +94,14 @@ export function SettlementPanel({
   // ---- terminal states: nothing transitions out (Section 4.2) ----
   if (status === "released" || status === "refunded") {
     return (
-      <section className="flint-section" aria-labelledby="settle-heading">
-        <h2 id="settle-heading" className="text-lg font-semibold">
-          {status === "released" ? "Paid" : "Refunded"}
-        </h2>
-        <p className="flint-note mt-3">
+      <section className="flint-card" aria-labelledby="settle-heading">
+        <h2 id="settle-heading">{status === "released" ? "Paid" : "Refunded"}</h2>
+        <p className="flint-note" style={{ marginTop: "var(--flint-space-3)" }}>
           {status === "released"
             ? "The payer released the escrow to the recipient. This is final: released is a terminal state, and no instruction can move these funds again. The transaction that did it is the receipt."
             : "The agreement expired without a release, and the escrow was returned to the payer. This is final: refunded is a terminal state."}
         </p>
-        <p className="mt-3 text-sm">
+        <p className="flint-muted" style={{ marginTop: "var(--flint-space-3)" }}>
           Find that transaction on the Solana explorer, or paste its signature into
           the verification page, to check it as a receipt.
         </p>
@@ -114,24 +112,20 @@ export function SettlementPanel({
   // ---- pending: shareable, but nothing to settle yet ----
   if (status === "pending") {
     return (
-      <section className="flint-section" aria-labelledby="settle-heading">
-        <h2 id="settle-heading" className="text-lg font-semibold">
-          Waiting to be funded
-        </h2>
-        <p className="flint-note mt-3">
+      <section className="flint-card flint-stack" aria-labelledby="settle-heading">
+        <h2 id="settle-heading">Waiting to be funded</h2>
+        <p className="flint-muted">
           No one has funded this agreement yet, so the escrow is empty and there is
           nothing to release or refund. Share the Blink from the recipient&rsquo;s
           Flint page: whoever approves it in a Solana wallet becomes the payer.
         </p>
         {expired ? (
-          <p className="flint-note flint-error mt-3">
+          <p className="flint-note flint-error">
             This agreement has expired, so it can no longer be funded. The
             recipient would need to propose a new one with a later expiry.
           </p>
         ) : null}
-        <div className="mt-3">
-          <ConnectButton />
-        </div>
+        <WalletStatus action="whoever funds it" />
       </section>
     );
   }
@@ -140,25 +134,23 @@ export function SettlementPanel({
   const isPayer = address !== null && address === payerAddress;
 
   return (
-    <section className="flint-section" aria-labelledby="settle-heading">
-      <h2 id="settle-heading" className="text-lg font-semibold">
-        The funds are in escrow
-      </h2>
-      <p className="flint-muted mt-1 text-sm">
+    <section className="flint-card" aria-labelledby="settle-heading">
+      <h2 id="settle-heading">The funds are in escrow</h2>
+      <p className="flint-muted" style={{ marginTop: "var(--flint-space-3)" }}>
         <code>{amountDisplay}</code> {symbol} is held by the agreement&rsquo;s own
         escrow account, not by either party. Nobody can take it out except by the
         two paths below, and which one is open depends on whether it has expired.
       </p>
 
-      <div className="mt-3">
-        <ConnectButton />
+      <div style={{ marginTop: "var(--flint-space-3)" }}>
+        <WalletStatus action="the wallet that signs" />
       </div>
 
       {/* ---- release: payer only, and only before expiry ---- */}
       <div className="flint-section">
-        <h3 className="font-semibold">Release to the recipient</h3>
+        <h3>Release to the recipient</h3>
         {expired ? (
-          <p className="flint-note flint-error mt-2">
+          <p className="flint-note flint-error" style={{ marginTop: "var(--flint-space-3)" }}>
             This agreement expired at {expiresAtIso}, so it can no longer be
             released. Once the expiry passes, the refund below is the only remaining
             path — the program will not move funds to the recipient after the
@@ -166,14 +158,15 @@ export function SettlementPanel({
           </p>
         ) : isPayer ? (
           <>
-            <p className="flint-muted mt-1 text-sm">
+            <p className="flint-muted" style={{ marginTop: "var(--flint-space-3)" }}>
               You are the payer for this agreement. Approving this moves the
               escrowed <code>{amountDisplay}</code> {symbol} to the recipient (
               <code>{shortAddress(recipient)}</code>) and is final.
             </p>
             <button
               type="button"
-              className="flint-button mt-2"
+              className="flint-button flint-primary"
+              style={{ marginTop: "var(--flint-space-4)" }}
               disabled={release.busy}
               onClick={() => void settle("release", release)}
             >
@@ -191,7 +184,7 @@ export function SettlementPanel({
             />
           </>
         ) : (
-          <p className="flint-note mt-2">
+          <p className="flint-note" style={{ marginTop: "var(--flint-space-3)" }}>
             Only the payer can release these funds, and the payer is{" "}
             <code>{payerAddress ?? "not recorded"}</code>. You are connected as{" "}
             <code>{shortAddress(address)}</code>. If you are the payer, connect that
@@ -203,9 +196,9 @@ export function SettlementPanel({
 
       {/* ---- refund: permissionless, once expired (acceptance 7.1.4) ---- */}
       <div className="flint-section">
-        <h3 className="font-semibold">Refund to the payer</h3>
+        <h3>Refund to the payer</h3>
         {!expired ? (
-          <p className="flint-note mt-2">
+          <p className="flint-note" style={{ marginTop: "var(--flint-space-3)" }}>
             Not available yet. A refund only becomes possible once the agreement has
             expired — it expires at {expiresAtIso}
             {secondsUntilExpiry > 0
@@ -217,7 +210,7 @@ export function SettlementPanel({
           </p>
         ) : (
           <>
-            <p className="flint-muted mt-1 text-sm">
+            <p className="flint-muted" style={{ marginTop: "var(--flint-space-3)" }}>
               This agreement expired at {expiresAtIso} with the money still in
               escrow. <strong>Anyone</strong> can trigger the refund, including you
               — it is permissionless by design, so the payer is never stuck waiting
@@ -228,14 +221,15 @@ export function SettlementPanel({
             </p>
             <button
               type="button"
-              className="flint-button mt-2"
+              className="flint-button"
+              style={{ marginTop: "var(--flint-space-4)" }}
               disabled={refund.busy || !connected}
               onClick={() => void settle("refund", refund)}
             >
               {refund.busy ? "Refunding…" : "Claim the refund for the payer"}
             </button>
             {!connected ? (
-              <p className="flint-hint mt-1">
+              <p className="flint-hint" style={{ marginTop: "var(--flint-space-2)" }}>
                 Connect any wallet to trigger the refund — it does not have to be the
                 payer&rsquo;s.
               </p>
