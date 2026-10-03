@@ -1,23 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Flint">
   <!--
-    Flint's mark: two overlapping cards on a rounded field, with two accent
-    bars — the payment-card motif of the brand.
+    Flint's mark: two overlapping payment cards on a near-black field, with an
+    accent bar across the front card and a peach bar beneath it.
 
-    Vector rebuild of public/brand/flint-icon-512.png. Every coordinate here
-    was measured from that asset (edges and corner radii sampled at full
-    resolution), and every colour is sampled from it exactly:
-    field #0F0F0F, cards #1A1A2E, accent bars #FF6B2B. The palette in
-    FLINT_DESIGN.md is updated to these sampled values.
+    Vector rebuild of public/brand/flint-icon-512.png, derived from that file's
+    alpha channel rather than its raw RGB. The raw pixels are semi-transparent
+    (#1A1A2E at alpha 200 for the back card, 160 for the front, #FF6B2B at 100
+    for the peach bar), so a raw-RGB histogram reads every card as the same
+    navy and misses the peach entirely. The colours below are the ones the PNG
+    actually presents — its opaque #0F0F0F field with the translucent layers
+    composited onto it — sampled at the centre of each layer.
 
-    Geometry, for the record: 512 canvas, field rounded at r100; both cards
-    are 300×317 rounded at r32, the back one at (40,87) and the front one
-    offset down-right at (165,107); the bars are rounded rects at
-    (129,232,255,26) and (188,301,197,16). Do not recolour or stretch: this
-    file and the PNG set in this directory are the same drawing.
+    Geometry, measured at full resolution from that file's alpha channel: 512
+    canvas; field rounded at r92; back card 307x318 at (40,87); front card
+    318x318 at (148,107); accent bar 257x25 at (128,233); peach bar 196x15 at
+    (189,300). The cards are drawn as paths rather than rounded rects because
+    their corners are squircles — measurably fuller than a circular arc of the
+    same radius — which `rx` cannot express; their control points sit at
+    0.5636 x radius, against 0.5523 for a true circle.
+
+    Every shape here is opaque and self-contained: an SVG has no backdrop, so
+    the translucency is resolved here rather than left to whatever it sits on.
+    Do not recolour or stretch: this file and the PNG set in this directory are
+    the same drawing.
   -->
-  <rect width="512" height="512" rx="100" fill="#0F0F0F"/>
-  <rect x="40" y="87" width="300" height="317" rx="32" fill="#1A1A2E"/>
-  <rect x="165" y="107" width="300" height="317" rx="32" fill="#1A1A2E"/>
-  <rect x="129" y="232" width="255" height="26" rx="8" fill="#FF6B2B"/>
-  <rect x="188" y="301" width="197" height="16" rx="8" fill="#FF6B2B"/>
+  <rect width="512" height="512" rx="92" fill="#0F0F0F"/>
+  <path fill="#4B4B5B" d="M84 87H303C327.8 87 347 106.2 347 131V361C347 385.8 327.8 405 303 405H84C59.2 405 40 385.8 40 361V131C40 106.2 59.2 87 84 87Z"/>
+  <path fill="#6F6F7C" d="M192 107H422C446.8 107 466 126.2 466 151V381C466 405.8 446.8 425 422 425H192C167.2 425 148 405.8 148 381V151C148 126.2 167.2 107 192 107Z"/>
+  <rect x="128" y="233" width="257" height="25" rx="8" fill="#FF6B2B"/>
+  <rect x="189" y="300" width="196" height="15" rx="7.5" fill="#FFC5AC"/>
 </svg>
