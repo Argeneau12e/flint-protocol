@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Flint">
+  <!--
+    Flint's mark: two overlapping cards on a rounded field, with two accent
+    bars — the payment-card motif of the brand.
+
+    Vector rebuild of public/brand/flint-icon-512.png. Every coordinate here
+    was measured from that asset (edges and corner radii sampled at full
+    resolution), and every colour is sampled from it exactly:
+    field #0F0F0F, cards #1A1A2E, accent bars #FF6B2B. The palette in
+    FLINT_DESIGN.md is updated to these sampled values.
+
+    Geometry, for the record: 512 canvas, field rounded at r100; both cards
+    are 300×317 rounded at r32, the back one at (40,87) and the front one
+    offset down-right at (165,107); the bars are rounded rects at
+    (129,232,255,26) and (188,301,197,16). Do not recolour or stretch: this
+    file and the PNG set in this directory are the same drawing.
+  -->
+  <rect width="512" height="512" rx="100" fill="#0F0F0F"/>
+  <rect x="40" y="87" width="300" height="317" rx="32" fill="#1A1A2E"/>
+  <rect x="165" y="107" width="300" height="317" rx="32" fill="#1A1A2E"/>
+  <rect x="129" y="232" width="255" height="26" rx="8" fill="#FF6B2B"/>
+  <rect x="188" y="301" width="197" height="16" rx="8" fill="#FF6B2B"/>
+</svg>

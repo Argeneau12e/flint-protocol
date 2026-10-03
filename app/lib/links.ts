@@ -10,6 +10,19 @@
  */
 
 /**
+ * A transaction on the public explorer.
+ *
+ * Built here rather than passed as a prop, because a *function* cannot cross the
+ * server/client boundary — Next throws "Functions cannot be passed directly to
+ * Client Components" at render time — and the pages that show a signature are
+ * server-rendered. A client component that needs the link builds it from the
+ * cluster name it was given.
+ */
+export function explorerTxUrl(signature: string, cluster: string): string {
+  return `https://explorer.solana.com/tx/${signature}?cluster=${cluster}`;
+}
+
+/**
  * The origin the *client* sees — never the origin the server is bound to.
  *
  * `new URL(request.url).origin` is what Next.js believes, and it builds that

@@ -12,13 +12,15 @@
 
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useFlintWallet, useWalletIssue } from "@/lib/wallet";
 
 /** Truncates a base58 address for display, keeping both ends recognisable. */
 export function shortAddress(address: string | null): string {
   if (address === null) return "";
-  return address.length <= 12 ? address : `${address.slice(0, 4)}…${address.slice(-4)}`;
+  return address.length <= 12
+    ? address
+    : `${address.slice(0, 4)}…${address.slice(-4)}`;
 }
 
 /**
@@ -30,9 +32,30 @@ export function shortAddress(address: string | null): string {
  * (not installed / declined / locked / unknown) and logs the full error.
  */
 export function ConnectButton() {
-  const { address, connected, connecting, connectByName, disconnect, available } = useFlintWallet();
+  const {
+    address,
+    connected,
+    connecting,
+    connectByName,
+    disconnect,
+    available: detected,
+  } = useFlintWallet();
   const { report, clear } = useWalletIssue();
   const [picking, setPicking] = useState(false);
+
+  /**
+   * Detection cannot run during server rendering: the server HTML says plain
+   * "Connect wallet", so the client's first — hydrating — render must say the
+   * same. A browser with a wallet installed would otherwise disagree at the
+   * very first frame (React #418, a text hydration mismatch) on every page
+   * carrying this header. The detected names join the render from the effect
+   * onward, which is also after the adapter's listeners have run.
+   */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  const available = mounted ? detected : [];
 
   if (connected) {
     return (
@@ -40,7 +63,11 @@ export function ConnectButton() {
         <span className="flint-muted">
           Connected: <code title={address ?? ""}>{shortAddress(address)}</code>
         </span>
-        <button type="button" className="flint-button" onClick={() => void disconnect()}>
+        <button
+          type="button"
+          className="flint-button"
+          onClick={() => void disconnect()}
+        >
           Disconnect
         </button>
       </span>
@@ -60,7 +87,9 @@ export function ConnectButton() {
         <button
           type="button"
           className="flint-button"
-          onClick={() => report(new Error("No Solana wallet was found in this browser."))}
+          onClick={() =>
+            report(new Error("No Solana wallet was found in this browser."))
+          }
         >
           Connect wallet
         </button>
@@ -85,7 +114,11 @@ export function ConnectButton() {
             </button>
           ))}
         </span>
-        <button type="button" className="flint-button" onClick={() => setPicking(false)}>
+        <button
+          type="button"
+          className="flint-button"
+          onClick={() => setPicking(false)}
+        >
           Cancel
         </button>
       </span>
@@ -106,8 +139,8 @@ export function ConnectButton() {
         {connecting
           ? "Connecting…"
           : available.length > 1
-            ? "Connect wallet"
-            : `Connect wallet (${available[0]})`}
+          ? "Connect wallet"
+          : `Connect wallet (${available[0]})`}
       </button>
     </span>
   );
@@ -220,7 +253,13 @@ export function Field({
 }
 
 /** A read-only key/value row for the terms summary. */
-export function Term({ term, children }: { term: string; children: ReactNode }) {
+export function Term({
+  term,
+  children,
+}: {
+  term: string;
+  children: ReactNode;
+}) {
   return (
     <div className="flint-term">
       <dt>{term}</dt>

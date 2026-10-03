@@ -16,7 +16,7 @@
 import { readConfig } from "@/lib/config";
 import { readDecisions, type DecisionLogEntry } from "@/lib/decision-log";
 import { AGENT_SCENARIOS, policyForScenario } from "@/lib/demo-policy";
-import { formatBaseUnits } from "@/lib/display";
+import { assetDisplay, formatBaseUnits } from "@/lib/display";
 import { describePolicy } from "@/lib/policy-engine";
 import { explorerTxUrl, getConnection } from "@/lib/solana";
 import { getMint } from "@solana/spl-token";
@@ -45,7 +45,9 @@ function EntryRow({
       <td>
         <span
           className={
-            entry.outcome === "allowed" ? "flint-tag flint-tag-ok" : "flint-tag flint-tag-no"
+            entry.outcome === "allowed"
+              ? "flint-tag flint-tag-ok"
+              : "flint-tag flint-tag-no"
           }
         >
           {OUTCOME_WORDS[entry.outcome]}
@@ -63,13 +65,22 @@ function EntryRow({
             <code>{entry.code}</code>
           </summary>
           <p>{entry.reason}</p>
-          <ul className="flint-checks" style={{ marginTop: "var(--flint-space-3)" }}>
+          <ul
+            className="flint-checks"
+            style={{ marginTop: "var(--flint-space-3)" }}
+          >
             {entry.checks.map((check, index) => (
               <li key={`${check.code}-${index}`}>
                 <span style={{ whiteSpace: "normal" }}>
                   <code>{check.code}</code> — {check.detail}
                 </span>
-                <span className={check.passed ? "flint-tag flint-tag-ok" : "flint-tag flint-tag-no"}>
+                <span
+                  className={
+                    check.passed
+                      ? "flint-tag flint-tag-ok"
+                      : "flint-tag flint-tag-no"
+                  }
+                >
                   {check.passed ? "pass" : "fail"}
                 </span>
               </li>
@@ -108,7 +119,9 @@ export default async function AgentPage({
       <div className="flint-stack">
         <h1 className="flint-page-title">Test agent</h1>
         <div className="flint-card flint-prose">
-          <p className="flint-muted">The agent harness is not configured on this machine.</p>
+          <p className="flint-muted">
+            The agent harness is not configured on this machine.
+          </p>
           <p>
             <code>{configError}</code>
           </p>
@@ -127,17 +140,20 @@ export default async function AgentPage({
   } catch {
     assetDecimals = null;
   }
+  // The label explains what the configured symbol means — a raw code like TST
+  // is an abbreviation nobody can read on its own.
+  const asset = assetDisplay(config.assetSymbol);
   const amountText = (baseUnits: string): string =>
     assetDecimals === null
       ? `${baseUnits} base units`
-      : `${formatBaseUnits(baseUnits, assetDecimals)} ${config.assetSymbol}`;
+      : `${formatBaseUnits(baseUnits, assetDecimals)} ${asset.label}`;
 
   const entries = readDecisions(config.decisionLogPath, 25);
   const policy = policyForScenario(
     "pay",
     "(the service wallet)",
     config.assetMint.toBase58(),
-    config.priceBaseUnits,
+    config.priceBaseUnits
   );
 
   return (
@@ -146,30 +162,47 @@ export default async function AgentPage({
         <p className="flint-eyebrow">Agent</p>
         <h1 className="flint-page-title">Test agent</h1>
         <p className="flint-muted" style={{ fontSize: "var(--flint-text-lg)" }}>
-          This agent pays for one HTTP call. It receives a 402 carrying an FRS-1 agreement,
-          runs it through a deterministic policy engine, and then either pays through the
-          same escrow program the human flow uses, or refuses and records why. There is no
-          language model anywhere in that decision path.
+          This agent pays for one HTTP call. It receives a 402 carrying an FRS-1
+          agreement, runs it through a deterministic policy engine, and then
+          either pays through the same escrow program the human flow uses, or
+          refuses and records why. There is no language model anywhere in that
+          decision path.
         </p>
       </header>
 
       <div className="flint-card">
-        <div className="flint-row flint-row-between" style={{ alignItems: "start" }}>
+        <div
+          className="flint-row flint-row-between"
+          style={{ alignItems: "start" }}
+        >
           <div>
             <h2 style={{ marginTop: 0 }}>Run it</h2>
-            <p className="flint-muted" style={{ fontSize: "var(--flint-text-sm)" }}>
-              This signs real transactions on Solana devnet and spends a little SOL on rent.
-              It takes a few seconds while devnet confirms.
+            <p
+              className="flint-muted"
+              style={{ fontSize: "var(--flint-text-sm)" }}
+            >
+              This signs real transactions on Solana devnet and spends a little
+              SOL on rent. It takes a few seconds while devnet confirms.
             </p>
           </div>
         </div>
 
-        <form method="post" action="/api/agent/run" className="flint-form" style={{ marginTop: "var(--flint-space-6)" }}>
+        <form
+          method="post"
+          action="/api/agent/run"
+          className="flint-form"
+          style={{ marginTop: "var(--flint-space-6)" }}
+        >
           <div className="flint-field">
             <label htmlFor="scenario" className="flint-label">
               Scenario
             </label>
-            <select id="scenario" name="scenario" defaultValue="pay" className="flint-input">
+            <select
+              id="scenario"
+              name="scenario"
+              defaultValue="pay"
+              className="flint-input"
+            >
               {AGENT_SCENARIOS.map((scenario) => (
                 <option key={scenario.value} value={scenario.value}>
                   {scenario.label}
@@ -181,7 +214,10 @@ export default async function AgentPage({
           <label htmlFor="settle" className="flint-check">
             <input type="checkbox" id="settle" name="settle" defaultChecked />
             <span>
-              Settle after funding <span className="flint-muted">(release to the recipient, producing the receipt)</span>
+              Settle after funding{" "}
+              <span className="flint-muted">
+                (release to the recipient, producing the receipt)
+              </span>
             </span>
           </label>
 
@@ -193,16 +229,26 @@ export default async function AgentPage({
         </form>
 
         {last === undefined ? null : (
-          <p className="flint-note flint-success" style={{ marginTop: "var(--flint-space-6)" }}>
-            Last run: <strong>{last}</strong>. The full record is in the log below.
+          <p
+            className="flint-note flint-success"
+            style={{ marginTop: "var(--flint-space-6)" }}
+          >
+            Last run: <strong>{last}</strong>. The full record is in the log
+            below.
           </p>
         )}
       </div>
       <div className="flint-card">
         <h2 style={{ marginTop: 0 }}>The policy it runs</h2>
-        <p className="flint-muted" style={{ fontSize: "var(--flint-text-sm)", marginBottom: "var(--flint-space-4)" }}>
-          Shown for the <code>pay</code> scenario, rendered from the same function the
-          endpoint uses &#32;&#8212; not a description of it.
+        <p
+          className="flint-muted"
+          style={{
+            fontSize: "var(--flint-text-sm)",
+            marginBottom: "var(--flint-space-4)",
+          }}
+        >
+          Shown for the <code>pay</code> scenario, rendered from the same
+          function the endpoint uses &#32;&#8212; not a description of it.
         </p>
         <dl className="flint-kv-group">
           <div className="flint-kv">
@@ -230,12 +276,15 @@ export default async function AgentPage({
             <dd className="flint-num">{policy.maxTtlSeconds}s</dd>
           </div>
         </dl>
-        <details className="flint-more" style={{ marginTop: "var(--flint-space-4)" }}>
+        <details
+          className="flint-more"
+          style={{ marginTop: "var(--flint-space-4)" }}
+        >
           <summary>Why the cap can come out smaller than it looks</summary>
           <p>
             The spend cap and session budget are the agent&#39;s own limits; the
-            agreement&#39;s advertised cap is honoured too, and the stricter of the two
-            applies. The engine reports the figure it actually enforced:{" "}
+            agreement&#39;s advertised cap is honoured too, and the stricter of
+            the two applies. The engine reports the figure it actually enforced:{" "}
             <span className="flint-num">{describePolicy(policy)}</span>
           </p>
         </details>
@@ -246,7 +295,8 @@ export default async function AgentPage({
         {entries.length === 0 ? (
           <div className="flint-card">
             <p className="flint-muted" style={{ margin: 0 }}>
-              No decisions yet. Run the agent above and the first entry will appear here.
+              No decisions yet. Run the agent above and the first entry will
+              appear here.
             </p>
           </div>
         ) : (
@@ -268,7 +318,11 @@ export default async function AgentPage({
                 </thead>
                 <tbody>
                   {[...entries].reverse().map((entry, index) => (
-                    <EntryRow key={`${entry.at}-${index}`} entry={entry} amountText={amountText} />
+                    <EntryRow
+                      key={`${entry.at}-${index}`}
+                      entry={entry}
+                      amountText={amountText}
+                    />
                   ))}
                 </tbody>
               </table>

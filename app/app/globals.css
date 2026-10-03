@@ -1,4 +1,10 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+/*
+ ---break---
+ */
+@custom-variant dark (&:is(.dark *));
 
 /*
  * Flint's design foundations, in one place.
@@ -26,6 +32,64 @@
   --text-lg--line-height: var(--flint-leading-heading);
   --text-2xl: var(--flint-text-h1);
   --text-2xl--line-height: var(--flint-leading-tight);
+  /*
+   * The library's font utilities are pointed at the faces the root layout
+   * self-hosts, so a shadcn component renders in Flint's own type rather than in
+   * Tailwind's default stack. (The default `--font-sans: var(--font-sans)` the
+   * CLI writes resolves to nothing, since the app never defines a bare
+   * `--font-sans`.)
+   */
+  --font-heading: var(--flint-font-display);
+  --font-sans: var(--flint-font-body);
+  --font-mono: var(--flint-font-mono);
+  /*
+   * The library ships no success/warning tone, and Flint has three semantic
+   * colours that are not errors. Exposing them as Tailwind utilities
+   * (`text-success`, `text-info`) keeps a component's classes in the same
+   * vocabulary as the rest of the system instead of reaching for a one-off
+   * style.
+   */
+  --color-success: var(--flint-success);
+  --color-warning: var(--flint-warning);
+  --color-info: var(--flint-info);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 :root {
@@ -59,6 +123,16 @@
   --flint-line: rgba(140, 100, 35, 0.35);
   --flint-line-strong: rgba(140, 100, 35, 0.62);
   --flint-blur: 12px;
+
+  /*
+   * The same three tints, composited over --flint-bg and written as opaque
+   * colours. Anything that must not be seen through — a dialog, a popover, an
+   * exported image — cannot use the translucent panels above: over an unknown
+   * backdrop they stop guaranteeing the text contrast the palette promises.
+   */
+  --flint-surface: #171512;
+  --flint-surface-raised: #1d1a17;
+  --flint-surface-accent: #221b0f;
 
   /*
    * Text drawn *on* the accent fill. The near-black background colour is the
@@ -171,6 +245,61 @@
   /* Focus ring: one definition, used by every interactive element. */
   --flint-focus-width: 2px;
   --flint-focus-offset: 2px;
+  /* ---- shadcn/ui theme variables --------------------------------------
+   * The component library reads *these* names (`bg-background`,
+   * `text-muted-foreground`, `border-border`, …). Every value below is either a
+   * reference to a locked Flint token defined above, or a surface composited
+   * from one — so there is one palette, and restyling still means changing a
+   * token, never touching a component.
+   *
+   * The theme is dark-only, so the dark values live in `:root` itself.
+   */
+  --background: var(--flint-bg);
+  --foreground: var(--flint-ink);
+  /*
+   * Opaque surfaces where the Flint layer uses translucent panels: a dialog, an
+   * alert or a popover must not show the page through it, and text over a
+   * blurred translucent panel loses the contrast this palette promises. Each is
+   * the panel tint composited over --flint-bg — see --flint-surface above.
+   */
+  --card: var(--flint-surface);
+  --card-foreground: var(--flint-ink);
+  --popover: var(--flint-surface-raised);
+  --popover-foreground: var(--flint-ink);
+  /* The one action colour, with the near-black of the logo field on it. */
+  --primary: var(--flint-accent);
+  --primary-foreground: var(--flint-on-accent);
+  --secondary: var(--flint-surface-raised);
+  --secondary-foreground: var(--flint-ink);
+  --muted: var(--flint-surface);
+  --muted-foreground: var(--flint-muted);
+  /* A hover/selected *surface*, never a second accent hue. */
+  --accent: var(--flint-surface-accent);
+  --accent-foreground: var(--flint-ink);
+  /* Errors take the locked brand red; where a component renders error *text*
+   * the lighter --flint-error-text applies instead (contrast note above). */
+  --destructive: var(--flint-error);
+  --border: var(--flint-line);
+  --input: var(--flint-line-strong);
+  --ring: var(--flint-accent);
+  /* Unused by Flint's screens; set to palette values so a future chart cannot
+   * quietly introduce an off-brand hue (Section 2: no purple, anywhere). */
+  --chart-1: var(--flint-accent);
+  --chart-2: var(--flint-bronze);
+  --chart-3: var(--flint-success);
+  --chart-4: var(--flint-info);
+  --chart-5: var(--flint-muted);
+  /* The library's radius scale hangs off this: controls at the Flint control
+   * radius (--flint-radius-lg), one step below the card radius (12px). */
+  --radius: var(--flint-radius-lg);
+  --sidebar: var(--flint-surface);
+  --sidebar-foreground: var(--flint-ink);
+  --sidebar-primary: var(--flint-accent);
+  --sidebar-primary-foreground: var(--flint-on-accent);
+  --sidebar-accent: var(--flint-surface-accent);
+  --sidebar-accent-foreground: var(--flint-ink);
+  --sidebar-border: var(--flint-line);
+  --sidebar-ring: var(--flint-accent);
 }
 
 html {
@@ -1323,4 +1452,30 @@ select:focus-visible {
     padding-bottom: 0;
   }
 }
-
+/*
+ ---break---
+ */
+/*
+ * Dark is the only theme Flint ships, and its values already sit in `:root`
+ * above — so this block deliberately declares no colours. Restating a second
+ * palette here is how the rendered page and a `dark:` variant drift apart.
+ * It carries the `color-scheme` hint (native controls, scrollbars, form UI)
+ * and nothing else.
+ */
+.dark {
+  color-scheme: dark;
+}
+/*
+ ---break---
+ */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

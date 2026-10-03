@@ -46,7 +46,7 @@ import {
   type AgreementView,
 } from "../../../../../lib/agreement-view";
 import { actionsError, actionsHeaders, actionsPreflight, BLINK_ICON } from "../../../../../lib/actions";
-import { amountLabel } from "../../../../../lib/display";
+import { amountLabel, assetDisplay } from "../../../../../lib/display";
 import { agreementUrl, requestOrigin } from "../../../../../lib/links";
 import { internalFailureMessage, logInternalFailure } from "../../../../../lib/errors";
 
@@ -161,7 +161,7 @@ export async function GET(
   }
 
   const { agreement } = view;
-  const amount = amountLabel(view.amountDisplay, 0, view.symbol);
+  const amount = amountLabel(view.amountDisplay, 0, assetDisplay(view.symbol).label);
   const reason = unpayableReason(view);
   const title = agreement.title === "" ? "Flint payment agreement" : agreement.title;
 

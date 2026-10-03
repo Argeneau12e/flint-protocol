@@ -24,10 +24,15 @@
 
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AssetLabel } from "@/components/asset-label";
 import { ActionFeedback, Field, WalletStatus } from "@/components/agreement-ui";
-import { formatBaseUnits, parseDisplayAmount } from "@/lib/display";
+import {
+  assetDisplay,
+  formatBaseUnits,
+  parseDisplayAmount,
+} from "@/lib/display";
 import { useFlintWallet, useTransactionAction } from "@/lib/wallet";
 
 /** The server's answer to a create request. */
@@ -51,6 +56,37 @@ function explorerTxUrl(signature: string, cluster: string): string {
   return `https://explorer.solana.com/tx/${signature}?cluster=${cluster}`;
 }
 
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+/**
+ * `2 October 2026, 14:30 UTC` — the only date format this form shows.
+ *
+ * Assembled from UTC parts rather than through `toLocaleString`, which would
+ * render differently per device locale; the payer's page formats its deadline
+ * the same way, so the two ends of the agreement read identically.
+ */
+function formatUtcDate(at: Date): string {
+  const day = at.getUTCDate();
+  const month = MONTHS[at.getUTCMonth()];
+  const year = at.getUTCFullYear();
+  const hour = String(at.getUTCHours()).padStart(2, "0");
+  const minute = String(at.getUTCMinutes()).padStart(2, "0");
+  return `${day} ${month} ${year}, ${hour}:${minute} UTC`;
+}
+
 export function CreateForm({
   assetMint,
   assetSymbol,
@@ -72,7 +108,27 @@ export function CreateForm({
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
-  const [expiry, setExpiry] = useState<number>(expiryPresets[1]?.minutes ?? 1440);
+  const [expiry, setExpiry] = useState<number>(
+    expiryPresets[1]?.minutes ?? 1440
+  );
+
+  /**
+   * The deadline the current choice implies, once the browser has one.
+   *
+   * The expiry is fixed when the agreement is *created* — the API adds these
+   * minutes to the chain clock right then, not at funding — so "24 hours" is
+   * only a duration until someone says when the clock starts. Naming the
+   * instant is the difference between a duration and a deadline.
+   *
+   * Set in an effect, not during render: this page is server-rendered, and a
+   * Date computed at render time differs between server and client, which
+   * React reports as a hydration mismatch — a console error the browser smoke
+   * test rightly fails on. Until the effect runs the line is simply absent.
+   */
+  const [expiresAtGuess, setExpiresAtGuess] = useState<string | null>(null);
+  useEffect(() => {
+    setExpiresAtGuess(formatUtcDate(new Date(Date.now() + expiry * 60_000)));
+  }, [expiry]);
 
   // Created state is separate from the action state: a create that succeeded
   // stays on screen, with its links, until the person asks for another one.
@@ -95,8 +151,14 @@ export function CreateForm({
   const [amountTouched, setAmountTouched] = useState(false);
   const [attempted, setAttempted] = useState(false);
 
+  // What the amount fields call this asset. The raw symbol is mapped through
+  // `assetDisplay` so no screen ever renders a bare, unexplained code.
+  const asset = assetDisplay(assetSymbol);
   const scale = decimals ?? 0;
-  const amountCheck = useMemo(() => parseDisplayAmount(amount, scale), [amount, scale]);
+  const amountCheck = useMemo(
+    () => parseDisplayAmount(amount, scale),
+    [amount, scale]
+  );
 
   // Validation mirrors the server's rules rather than trusting the server to be
   // the only line of defence: a person should not be made to approve a wallet
@@ -149,16 +211,21 @@ export function CreateForm({
           expiryMinutes: expiry,
         }),
       });
-      const body = (await response.json().catch(() => ({}))) as Partial<Created> & {
+      const body = (await response
+        .json()
+        .catch(() => ({}))) as Partial<Created> & {
         error?: string;
       };
       if (!response.ok) {
         throw new Error(
-          body.error ?? `The server refused to build the agreement (HTTP ${response.status}).`,
+          body.error ??
+            `The server refused to build the agreement (HTTP ${response.status}).`
         );
       }
       if (typeof body.transaction !== "string" || typeof body.id !== "string") {
-        throw new Error("The server's response was not a transaction. Nothing was signed.");
+        throw new Error(
+          "The server's response was not a transaction. Nothing was signed."
+        );
       }
       builtRef.current = {
         id: body.id,
@@ -175,12 +242,15 @@ export function CreateForm({
     const blink = `${window.location.origin}/api/actions/flint/${created.id}?recipient=${created.recipient}`;
     const page = `${window.location.origin}/agreement/${created.id}?recipient=${created.recipient}`;
     return (
-      <section className="flint-card flint-stack" aria-labelledby="created-heading">
+      <section
+        className="flint-card flint-stack"
+        aria-labelledby="created-heading"
+      >
         <h2 id="created-heading">The agreement is on chain</h2>
         <p className="flint-muted">
           It is <code>pending</code>: the terms are set, the escrow is open and
-          empty, and no payer exists yet. Share the Blink — whoever approves it in
-          a Solana wallet becomes the payer.
+          empty, and no payer exists yet. Share the Blink — whoever approves it
+          in a Solana wallet becomes the payer.
         </p>
 
         <ActionFeedback
@@ -190,11 +260,17 @@ export function CreateForm({
           success={
             action.stage === "success"
               ? `Created on ${cluster}.${
-                  action.signature === null ? "" : ` Transaction ${action.signature}.`
+                  action.signature === null
+                    ? ""
+                    : ` Transaction ${action.signature}.`
                 } That is the creation signature, not a receipt — a receipt is the release or the refund.`
               : null
           }
-          signatureUrl={action.signature === null ? null : explorerTxUrl(action.signature, cluster)}
+          signatureUrl={
+            action.signature === null
+              ? null
+              : explorerTxUrl(action.signature, cluster)
+          }
         />
 
         <div>
@@ -244,15 +320,16 @@ export function CreateForm({
   // The live mirror of what the payer will be asked to approve, so the person
   // setting the terms reads the same numbers in the same order the payer will.
   const expiryLabel =
-    expiryPresets.find((preset) => preset.minutes === expiry)?.label ?? `${expiry} minutes`;
+    expiryPresets.find((preset) => preset.minutes === expiry)?.label ??
+    `${expiry} minutes`;
   const previewAmount =
     decimals === null
       ? amountCheck.ok
         ? `${amountCheck.baseUnits} base units`
         : "—"
       : amountCheck.ok
-        ? `${formatBaseUnits(amountCheck.baseUnits, decimals)} ${assetSymbol}`
-        : "—";
+      ? `${formatBaseUnits(amountCheck.baseUnits, decimals)} ${asset.label}`
+      : "—";
 
   return (
     <div className="flint-stack">
@@ -262,11 +339,11 @@ export function CreateForm({
           Create a payment agreement
         </h1>
         <p className="flint-muted" style={{ fontSize: "var(--flint-text-lg)" }}>
-          You are the <strong>recipient</strong>: you set the terms and your connected
-          wallet signs them, paying a small amount of rent to open the agreement.
-          Whoever funds it first becomes the payer — permanently — and from then on
-          the terms never change: the money waits for the payer to confirm delivery,
-          or comes back to them after the expiry.
+          You are the <strong>recipient</strong>: you set the terms and your
+          connected wallet signs them, paying a small amount of rent to open the
+          agreement. Whoever funds it first becomes the payer — permanently —
+          and from then on the terms never change: the money waits for the payer
+          to confirm delivery, or comes back to them after the expiry.
         </p>
       </header>
 
@@ -281,154 +358,202 @@ export function CreateForm({
               </div>
             ) : null}
 
-        <Field
-          id="title"
-          label="What is this payment for?"
-          hint="Shown to the payer in their wallet before they approve."
-        >
-          <input
-            id="title"
-            name="title"
-            className="flint-input"
-            value={title}
-            maxLength={128}
-            placeholder="Website redesign, milestone 1"
-            onChange={(event) => setTitle(event.target.value)}
-            onBlur={() => setTitleTouched(true)}
-            aria-describedby="title-hint"
-            aria-invalid={showTitleError}
-          />
-          {showTitleError ? <p className="flint-error-text">{titleError}</p> : null}
-        </Field>
+            <Field
+              id="title"
+              label="What is this payment for?"
+              hint="Shown to the payer in their wallet before they approve."
+            >
+              <input
+                id="title"
+                name="title"
+                className="flint-input"
+                value={title}
+                maxLength={128}
+                placeholder="Website redesign, milestone 1"
+                onChange={(event) => setTitle(event.target.value)}
+                onBlur={() => setTitleTouched(true)}
+                aria-describedby="title-hint"
+                aria-invalid={showTitleError}
+              />
+              {showTitleError ? (
+                <p className="flint-error-text">{titleError}</p>
+              ) : null}
+            </Field>
 
-        <Field
-          id="amount"
-          label={`Amount (${assetSymbol})`}
-          hint={
-            decimals === null
-              ? `The asset's decimal scale could not be read, so this is in base units. Mint ${assetMint}.`
-              : `In ${assetSymbol}, up to ${decimals} decimal places. Fixed forever once funded.`
-          }
-        >
-          <input
-            id="amount"
-            name="amount"
-            className="flint-input flint-num"
-            inputMode="decimal"
-            value={amount}
-            placeholder="250"
-            onChange={(event) => setAmount(event.target.value)}
-            onBlur={() => setAmountTouched(true)}
-            aria-describedby="amount-hint"
-            aria-invalid={showAmountError}
-          />
-          {showAmountError ? (
-            <p className="flint-error-text">
-              {amount.trim() === "" ? "Enter an amount." : amountCheck.error}
-            </p>
-          ) : amountCheck.ok ? (
-            <p className="flint-hint">
-              {decimals === null ? (
-                <>
-                  Exactly{" "}
-                  <span className="flint-num">{amountCheck.baseUnits}</span> base units
-                  will be escrowed (the asset&rsquo;s decimal scale could not be read).
-                </>
-              ) : (
-                <>
-                  Exactly{" "}
-                  <span className="flint-num">
-                    {formatBaseUnits(amountCheck.baseUnits, decimals)}
-                  </span>{" "}
-                  {assetSymbol} will be escrowed.
-                </>
+            <Field
+              id="amount"
+              label={`Amount (${asset.label})`}
+              hint={
+                decimals === null
+                  ? `The asset's decimal scale could not be read, so this is in base units. Mint ${assetMint}.`
+                  : `In ${asset.label}, up to ${decimals} decimal places. Fixed forever once funded.`
+              }
+            >
+              <input
+                id="amount"
+                name="amount"
+                className="flint-input flint-num"
+                inputMode="decimal"
+                value={amount}
+                placeholder="250"
+                onChange={(event) => setAmount(event.target.value)}
+                onBlur={() => setAmountTouched(true)}
+                aria-describedby="amount-hint"
+                aria-invalid={showAmountError}
+              />
+              {showAmountError ? (
+                <p className="flint-error-text">
+                  {amount.trim() === ""
+                    ? "Enter an amount."
+                    : amountCheck.error}
+                </p>
+              ) : amountCheck.ok ? (
+                <p className="flint-hint">
+                  {decimals === null ? (
+                    <>
+                      Exactly{" "}
+                      <span className="flint-num">{amountCheck.baseUnits}</span>{" "}
+                      base units will be escrowed (the asset&rsquo;s decimal
+                      scale could not be read).
+                    </>
+                  ) : (
+                    <>
+                      Exactly{" "}
+                      <span className="flint-num">
+                        {formatBaseUnits(amountCheck.baseUnits, decimals)}
+                      </span>{" "}
+                      <AssetLabel symbol={assetSymbol} /> will be escrowed.
+                    </>
+                  )}
+                </p>
+              ) : null}
+            </Field>
+
+            <Field
+              id="expiry"
+              label="Expires after"
+              hint="The clock starts when you create this agreement — not when someone funds it. After the deadline you can never be paid, and the payer can take the money back. The chain clock decides when, not this device."
+            >
+              <select
+                id="expiry"
+                name="expiry"
+                value={expiry}
+                onChange={(event) => setExpiry(Number(event.target.value))}
+                aria-describedby="expiry-hint"
+              >
+                {expiryPresets.map((preset) => (
+                  <option key={preset.minutes} value={preset.minutes}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+              {expiresAtGuess === null ? null : (
+                <p className="flint-hint">
+                  Create it now and it expires about{" "}
+                  <span className="flint-num">{expiresAtGuess}</span>.
+                </p>
               )}
-            </p>
-          ) : null}
-        </Field>
+              {shortExpiryWarning === null ? null : (
+                <p className="flint-error-text">{shortExpiryWarning}</p>
+              )}
+            </Field>
 
-        <Field
-          id="expiry"
-          label="Expires after"
-          hint="After this, you can never be paid, and the payer can take the money back. The chain clock decides when, not this device."
-        >
-          <select
-            id="expiry"
-            name="expiry"
-            value={expiry}
-            onChange={(event) => setExpiry(Number(event.target.value))}
-            aria-describedby="expiry-hint"
-          >
-            {expiryPresets.map((preset) => (
-              <option key={preset.minutes} value={preset.minutes}>
-                {preset.label}
-              </option>
-            ))}
-          </select>
-          {shortExpiryWarning === null ? null : (
-            <p className="flint-error-text">{shortExpiryWarning}</p>
-          )}
-        </Field>
-
-        <Field
-          id="memo"
-          label="Note to the payer (optional)"
-          hint="Included in the Blink. It cannot change what the payer is agreeing to — only the amount, asset, expiry and condition bind them."
-        >
-          <textarea
-            id="memo"
-            name="memo"
-            className="flint-input"
-            rows={3}
-            maxLength={512}
-            value={memo}
-            onChange={(event) => setMemo(event.target.value)}
-            aria-describedby="memo-hint"
-          />
-        </Field>
-
+            <Field
+              id="memo"
+              label="Note to the payer (optional)"
+              hint="Included in the Blink. It cannot change what the payer is agreeing to — only the amount, asset, expiry and condition bind them."
+            >
+              <textarea
+                id="memo"
+                name="memo"
+                className="flint-input"
+                rows={3}
+                maxLength={512}
+                value={memo}
+                onChange={(event) => setMemo(event.target.value)}
+                aria-describedby="memo-hint"
+              />
+            </Field>
           </div>
 
           <div className="flint-card">
             <div className="flint-prose">
-              <p className="flint-muted" style={{ fontSize: "var(--flint-text-sm)", margin: 0 }}>
-                <strong style={{ color: "var(--flint-ink)" }}>Condition: </strong>
-                <code>manual-confirmation</code> — {conditionDescription} The payer releases
-                the funds by signing; nothing is checked automatically.
+              <p
+                className="flint-muted"
+                style={{ fontSize: "var(--flint-text-sm)", margin: 0 }}
+              >
+                <strong style={{ color: "var(--flint-ink)" }}>
+                  Condition:{" "}
+                </strong>
+                <code>manual-confirmation</code> — {conditionDescription} The
+                payer releases the funds by signing; nothing is checked
+                automatically.
               </p>
             </div>
 
-            <ActionFeedback busy={action.busy} message={action.message} error={action.error} success={null} />
+            <ActionFeedback
+              busy={action.busy}
+              message={action.message}
+              error={action.error}
+              success={null}
+            />
 
             <div>
-              <button type="submit" className="flint-button flint-primary" disabled={!ready || action.busy}>
+              <button
+                type="submit"
+                className="flint-button flint-primary"
+                disabled={!ready || action.busy}
+              >
                 {action.busy ? "Working…" : "Create the agreement"}
               </button>
               {!connected ? (
-                <p className="flint-hint">Connect a wallet above to create the agreement.</p>
+                <p className="flint-hint">
+                  Connect a wallet above to create the agreement.
+                </p>
               ) : invalid ? (
-                <p className="flint-hint">Fill in the terms above to continue.</p>
+                <p className="flint-hint">
+                  Fill in the terms above to continue.
+                </p>
               ) : null}
             </div>
           </div>
         </form>
 
-        <aside className="flint-card flint-preview flint-sticky" aria-label="What the payer will see">
+        <aside
+          className="flint-card flint-preview flint-sticky"
+          aria-label="What the payer will see"
+        >
           <p className="flint-eyebrow">What the payer sees</p>
           <div className="flint-amount">
             <span>{previewAmount}</span>
           </div>
-          <p className="flint-muted" style={{ fontSize: "var(--flint-text-sm)" }}>
+          <p
+            className="flint-muted"
+            style={{ fontSize: "var(--flint-text-sm)" }}
+          >
             {title.trim() === "" ? "An untitled agreement" : title.trim()}
           </p>
           <dl className="flint-kv-group" style={{ marginTop: "1rem" }}>
             <div className="flint-kv">
               <dt>Expires after</dt>
-              <dd>{expiryLabel}</dd>
+              <dd>
+                {expiryLabel}
+                {expiresAtGuess === null ? null : (
+                  <span
+                    className="flint-muted"
+                    style={{ fontSize: "var(--flint-text-sm)" }}
+                  >
+                    {" "}
+                    — about {expiresAtGuess}
+                  </span>
+                )}
+              </dd>
             </div>
             <div className="flint-kv">
               <dt>Asset</dt>
-              <dd className="flint-num">{assetSymbol}</dd>
+              <dd className="flint-num">
+                <AssetLabel symbol={assetSymbol} />
+              </dd>
             </div>
             <div className="flint-kv">
               <dt>Released when</dt>
@@ -439,7 +564,10 @@ export function CreateForm({
               <dd>Refunded to the payer after the expiry</dd>
             </div>
           </dl>
-          <p className="flint-muted" style={{ fontSize: "var(--flint-text-sm)", marginTop: "1rem" }}>
+          <p
+            className="flint-muted"
+            style={{ fontSize: "var(--flint-text-sm)", marginTop: "1rem" }}
+          >
             Nothing here can be edited once someone funds it.
           </p>
         </aside>
@@ -477,8 +605,8 @@ function CopyableField({ id, value }: { id: string; value: string }) {
         {copied === "done"
           ? "Copied."
           : copied === "failed"
-            ? "Could not copy — select the text and copy it manually."
-            : ""}
+          ? "Could not copy — select the text and copy it manually."
+          : ""}
       </span>
     </div>
   );

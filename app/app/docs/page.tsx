@@ -2,14 +2,18 @@
  * `/docs` — the reference material, moved off the front door.
  *
  * The Overview previously carried the agreement schema, the state machine, the
- * condition grammar, the environment block and the out-of-scope list. All of it is
- * true and all of it belongs somewhere; none of it helps a first-time visitor make a
- * payment, and mixing a field table into a call to action is the specific way a page
- * stops feeling easy.
+ * condition grammar, the environment block, the guarantees grid, the non-goals
+ * list and the out-of-scope list. All of it is true and all of it belongs
+ * somewhere; none of it helps a first-time visitor make a payment, and mixing a
+ * field table into a call to action is the specific way a page stops feeling
+ * easy.
  *
  * So: this page is the contract in plain view, and it is generated from the same
- * `lib/frs1-types.ts` the program's `state.rs` is mirrored from — the table cannot
- * drift from the code that reads it, which is the only reason to publish it at all.
+ * `lib/frs1-types.ts` the program's `state.rs` is mirrored from — the table
+ * cannot drift from the code that reads it, which is the only reason to publish
+ * it at all. The dense sections sit in one accordion that is closed by default:
+ * published in full, but asked for rather than pushed (FLINT_DESIGN.md — the
+ * guarantees grid belongs "in an accordion, not on the create or pay screens").
  */
 
 import {
@@ -20,6 +24,12 @@ import {
 } from "@/lib/frs1-types";
 import { CLUSTER, COMMITMENT, RPC_URL } from "@/lib/solana";
 import { DEFAULT_PROGRAM_ID, USDC_DEVNET_MINT } from "@/lib/config";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 export const metadata = { title: "Docs — Flint" };
 
@@ -71,108 +81,137 @@ export default function DocsPage() {
         </p>
       </div>
 
-      <section className="flint-block" aria-labelledby="scope-heading">
-        <h2 id="scope-heading">Guaranteed, and refused</h2>
-        <div className="flint-grid flint-cols-2">
-          <div className="flint-card">
-            <h3>Guaranteed</h3>
-            <dl className="flint-kv-group">
-              {IN_SCOPE.map(([term, note]) => (
-                <div className="flint-kv" key={term}>
-                  <dt>{term}</dt>
-                  <dd className="flint-muted">{note}</dd>
+      {/*
+        One disclosure holding every dense section: the guarantees grid (which
+        the Overview used to carry, footnote included), the lifecycle, the
+        condition rule and the field table. A payer never needs any of it, and
+        someone evaluating the protocol can open exactly the one they came for —
+        closed by default is the point, not a way of hiding it.
+      */}
+      <section className="flint-block" aria-labelledby="reference-heading">
+        <h2 id="reference-heading">Reference, in detail</h2>
+        <Accordion type="multiple" className="flint-stack">
+          <AccordionItem value="scope">
+            <AccordionTrigger>Guaranteed, and refused</AccordionTrigger>
+            <AccordionContent>
+              <div className="flint-grid flint-cols-2">
+                <div className="flint-card">
+                  <h3>Guaranteed</h3>
+                  <dl className="flint-kv-group">
+                    {IN_SCOPE.map(([term, note]) => (
+                      <div className="flint-kv" key={term}>
+                        <dt>{term}</dt>
+                        <dd className="flint-muted">{note}</dd>
+                      </div>
+                    ))}
+                  </dl>
                 </div>
-              ))}
-            </dl>
-          </div>
-          <div className="flint-card">
-            <h3>Refused by design</h3>
-            <dl className="flint-kv-group">
-              {OUT_OF_SCOPE.map(([term, note]) => (
-                <div className="flint-kv" key={term}>
-                  <dt>{term}</dt>
-                  <dd className="flint-muted">{note}</dd>
+                <div className="flint-card">
+                  <h3>Refused by design</h3>
+                  <dl className="flint-kv-group">
+                    {OUT_OF_SCOPE.map(([term, note]) => (
+                      <div className="flint-kv" key={term}>
+                        <dt>{term}</dt>
+                        <dd className="flint-muted">{note}</dd>
+                      </div>
+                    ))}
+                  </dl>
                 </div>
-              ))}
-            </dl>
-          </div>
-        </div>
-      </section>
-
-      <section className="flint-block" aria-labelledby="lifecycle-heading">
-        <h2 id="lifecycle-heading">The lifecycle</h2>
-        <div className="flint-card">
-          <p className="flint-muted flint-fine">
-            <code>pending</code> is the only state with money in it that has not been
-            decided. <code>released</code> and <code>refunded</code> are terminal — no
-            instruction transitions out of either, which is what makes a receipt final.
-          </p>
-          <div className="flint-row" style={{ marginTop: "1rem" }}>
-            {FRS1_STATUSES.map((status) => (
-              <span
-                className={
-                  FRS1_TERMINAL_STATUSES.includes(status)
-                    ? "flint-tag flint-tag-gold"
-                    : "flint-tag"
-                }
-                key={status}
-                title={
-                  FRS1_TERMINAL_STATUSES.includes(status)
-                    ? "Terminal: nothing transitions out of this state"
-                    : "Transient: an instruction can move on from this state"
-                }
+              </div>
+              <p
+                className="flint-muted"
+                style={{ fontSize: "var(--flint-text-sm)", marginTop: "1.25rem" }}
               >
-                {status}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
+                A receipt proves a state transition happened for a specific amount, signed by
+                the address the program required. It does not prove the real-world work was
+                delivered — that is the payer&rsquo;s attestation, not a cryptographic fact.
+              </p>
+            </AccordionContent>
+          </AccordionItem>
 
-      <section className="flint-block" aria-labelledby="conditions-heading">
-        <h2 id="conditions-heading">The one condition that is enforced</h2>
-        <div className="flint-card flint-prose">
-          <p>
-            <code>{FRS1_ENFORCED_CONDITION_TYPES.join(", ")}</code>. A release is valid
-            when the transaction is signed by the address stored as the payer at funding.
-            That is the whole rule.
-          </p>
-          <p className="flint-muted flint-fine">
-            <code>oracle-attested</code> exists as a name in the schema so that a later
-            version can add it without changing the shape of an agreement. No transition
-            may depend on it today, and a free-text description never gates a payment.
-          </p>
-        </div>
-      </section>
-      <section className="flint-block" aria-labelledby="schema-heading">
-        <h2 id="schema-heading">The agreement, field by field</h2>
-        <div className="flint-card flint-card-flush">
-          <div className="flint-scroll-x">
-            <table className="flint-table">
-              <caption>FRS-1 v1 agreement object</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Field</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {FRS1_FIELDS.map((field) => (
-                  <tr key={field.name}>
-                    <th scope="row">
-                      <code>{field.name}</code>
-                    </th>
-                    <td>
-                      <code>{field.type}</code>
-                    </td>
-                    <td className="flint-muted">{field.note}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          <AccordionItem value="lifecycle">
+            <AccordionTrigger>The lifecycle</AccordionTrigger>
+            <AccordionContent>
+              <div className="flint-card">
+                <p className="flint-muted flint-fine">
+                  <code>pending</code> is the only state with money in it that has not been
+                  decided. <code>released</code> and <code>refunded</code> are terminal — no
+                  instruction transitions out of either, which is what makes a receipt final.
+                </p>
+                <div className="flint-row" style={{ marginTop: "1rem" }}>
+                  {FRS1_STATUSES.map((status) => (
+                    <span
+                      className={
+                        FRS1_TERMINAL_STATUSES.includes(status)
+                          ? "flint-tag flint-tag-gold"
+                          : "flint-tag"
+                      }
+                      key={status}
+                      title={
+                        FRS1_TERMINAL_STATUSES.includes(status)
+                          ? "Terminal: nothing transitions out of this state"
+                          : "Transient: an instruction can move on from this state"
+                      }
+                    >
+                      {status}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="condition">
+            <AccordionTrigger>The one condition that is enforced</AccordionTrigger>
+            <AccordionContent>
+              <div className="flint-card flint-prose">
+                <p>
+                  <code>{FRS1_ENFORCED_CONDITION_TYPES.join(", ")}</code>. A release is valid
+                  when the transaction is signed by the address stored as the payer at funding.
+                  That is the whole rule.
+                </p>
+                <p className="flint-muted flint-fine">
+                  <code>oracle-attested</code> exists as a name in the schema so that a later
+                  version can add it without changing the shape of an agreement. No transition
+                  may depend on it today, and a free-text description never gates a payment.
+                </p>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="schema">
+            <AccordionTrigger>The agreement, field by field</AccordionTrigger>
+            <AccordionContent>
+              <div className="flint-card flint-card-flush">
+                <div className="flint-scroll-x">
+                  <table className="flint-table">
+                    <caption>FRS-1 v1 agreement object</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Field</th>
+                        <th scope="col">Type</th>
+                        <th scope="col">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {FRS1_FIELDS.map((field) => (
+                        <tr key={field.name}>
+                          <th scope="row">
+                            <code>{field.name}</code>
+                          </th>
+                          <td>
+                            <code>{field.type}</code>
+                          </td>
+                          <td className="flint-muted">{field.note}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </section>
 
       <section className="flint-block" aria-labelledby="environment-heading">
@@ -202,6 +241,7 @@ export default function DocsPage() {
           </dl>
         </div>
       </section>
+
       <section className="flint-block" aria-labelledby="not-built-heading">
         <h2 id="not-built-heading">Not built yet</h2>
         <div className="flint-card flint-prose">

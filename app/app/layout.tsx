@@ -63,7 +63,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${display.variable} ${body.variable} ${mono.variable}`}
+      className={`dark ${display.variable} ${body.variable} ${mono.variable}`}
     >
       <body>
         {/*
@@ -84,7 +84,7 @@ export default function RootLayout({
               <Link href="/" className="flint-brand-lockup">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src="/brand/flint-emblem-transparent.svg"
+                  src="/brand/flint-mark.svg"
                   alt=""
                   aria-hidden="true"
                   className="flint-emblem"
@@ -117,4 +117,3 @@ export default function RootLayout({
     </html>
   );
 }
-

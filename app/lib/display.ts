@@ -29,13 +29,52 @@ export function formatBaseUnits(baseUnits: string, decimals: number): string {
 
   const scale = 10n ** BigInt(decimals);
   const whole = value / scale;
-  const fraction = (value % scale).toString().padStart(decimals, "0").replace(/0+$/, "");
+  const fraction = (value % scale)
+    .toString()
+    .padStart(decimals, "0")
+    .replace(/0+$/, "");
   return fraction === "" ? whole.toString() : `${whole.toString()}.${fraction}`;
 }
 
 /** Both figures at once, for a place where the exactness is the point. */
-export function amountLabel(baseUnits: string, decimals: number, symbol: string): string {
+export function amountLabel(
+  baseUnits: string,
+  decimals: number,
+  symbol: string
+): string {
   return `${formatBaseUnits(baseUnits, decimals)} ${symbol}`;
+}
+
+/**
+ * The explanation an asset label owes the reader (Section 4.5).
+ *
+ * A symbol on its own is an abbreviation, and `TST` is one nobody can know:
+ * it is this build's automated-test mint — a stand-in for USDC that is not
+ * real USDC. Rendering the raw code next to a figure asks the reader to
+ * trust a word that was never explained, so wherever a symbol would render,
+ * `assetDisplay` supplies the label a person can understand plus the
+ * deployment context the label alone would hide (design rules: no raw asset
+ * codes without an explanation).
+ */
+export interface AssetDisplay {
+  /** What renders where the raw symbol would have gone. */
+  label: string;
+  /** Deployment context to show beside the label, or null when none applies. */
+  badge: string | null;
+  /** One sentence of context for a hover or assistive tooltip, or null. */
+  tooltip: string | null;
+}
+
+export function assetDisplay(symbol: string): AssetDisplay {
+  if (symbol === "TST") {
+    return {
+      label: "Test USDC",
+      badge: "devnet",
+      tooltip:
+        "Test USDC — this deployment's test token on Solana devnet. It stands in for USDC in automated runs and has no monetary value.",
+    };
+  }
+  return { label: symbol, badge: null, tooltip: null };
 }
 
 export type ParsedAmount =
@@ -51,7 +90,10 @@ export type ParsedAmount =
  * `1e6` and `1000000` are the same number to a human and different integers on
  * chain, which is exactly the class of ambiguity base units exist to remove.
  */
-export function parseDisplayAmount(input: string, decimals: number): ParsedAmount {
+export function parseDisplayAmount(
+  input: string,
+  decimals: number
+): ParsedAmount {
   const raw = input.trim();
   if (raw === "") {
     return { ok: false, error: "Enter an amount." };
@@ -66,7 +108,8 @@ export function parseDisplayAmount(input: string, decimals: number): ParsedAmoun
   if (/[+\-]/.test(raw)) {
     return {
       ok: false,
-      error: "An amount has to be positive. To charge less, the recipient changes the terms before funding.",
+      error:
+        "An amount has to be positive. To charge less, the recipient changes the terms before funding.",
     };
   }
   if (!/^\d*\.?\d*$/.test(raw) || !/\d/.test(raw)) {
@@ -96,12 +139,16 @@ export function parseDisplayAmount(input: string, decimals: number): ParsedAmoun
   const baseUnits =
     decimals === 0
       ? BigInt(whole)
-      : BigInt(whole) * 10n ** BigInt(decimals) + BigInt(fraction === "" ? "0" : fraction);
+      : BigInt(whole) * 10n ** BigInt(decimals) +
+        BigInt(fraction === "" ? "0" : fraction);
   if (baseUnits <= 0n) {
     return { ok: false, error: "The amount has to be greater than zero." };
   }
   if (baseUnits > U64_MAX) {
-    return { ok: false, error: "That amount is larger than the protocol can represent." };
+    return {
+      ok: false,
+      error: "That amount is larger than the protocol can represent.",
+    };
   }
   return { ok: true, baseUnits: baseUnits.toString() };
 }

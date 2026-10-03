@@ -22,7 +22,7 @@ import { readConfig } from "@/lib/config";
 import { verifyFunding, verifySettlement } from "@/lib/verify";
 import type { VerificationCheck, VerifyDisplay } from "@/lib/verify";
 import type { Frs1Agreement } from "@/lib/frs1-types";
-import { formatBaseUnits } from "@/lib/display";
+import { assetDisplay, formatBaseUnits } from "@/lib/display";
 import { isTransactionSignature } from "@/lib/signature";
 import { getMint } from "@solana/spl-token";
 
@@ -193,7 +193,7 @@ export default async function VerifyPage({
     display = {
       mint: config.assetMint.toBase58(),
       decimals: mint.decimals,
-      symbol: config.assetSymbol,
+      symbol: assetDisplay(config.assetSymbol).label,
     };
   } catch {
     display = undefined;

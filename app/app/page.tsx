@@ -4,9 +4,10 @@
  * Everything this page used to lead with (the schema table, the state machine, the
  * condition grammar, the environment block) is reference material: correct, worth
  * keeping, and useless to someone who has never used Flint and wants to make a
- * payment. That material now lives under Docs, and this page does the four things a
- * first visit actually needs — say what it is in a sentence, show the shape of the
- * flow, name the two audiences, and state the boundary honestly.
+ * payment. That material now lives under Docs — including the guarantees grid
+ * and the non-goals list, which went there with the rest — and this page does
+ * the three things a first visit actually needs: say what it is in a sentence,
+ * show the shape of the flow, and name the two audiences.
  *
  * The two buttons are the two actions worth taking before anyone reads anything.
  */
@@ -34,22 +35,6 @@ const STEPS = [
     title: "Verify",
     body: "Ten checks over the settlement, recomputed from the chain rather than from us.",
   },
-] as const;
-
-const GUARANTEES = [
-  "Fixed amount and asset",
-  "Real escrow with an expiry",
-  "Payer-signed release",
-  "Deterministic agent policy",
-  "Verifiable receipt",
-] as const;
-
-const REFUSALS = [
-  "Partial settlement",
-  "Arbitrated disputes",
-  "Oracle conditions",
-  "Recurring payments",
-  "Cross-chain settlement",
 ] as const;
 
 export default function OverviewPage() {
@@ -102,40 +87,6 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      <section className="flint-block" aria-labelledby="guarantees-heading">
-        <h2 id="guarantees-heading">What v1 guarantees, and what it refuses to</h2>
-        <div className="flint-card">
-          <div className="flint-grid flint-cols-2">
-            <div>
-              <h3>Guaranteed by the program</h3>
-              <ul className="flint-checks" style={{ marginTop: "0.75rem" }}>
-                {GUARANTEES.map((item) => (
-                  <li key={item}>
-                    <span>{item}</span>
-                    <span className="flint-tag flint-tag-ok">Yes</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h3>Out of scope by design</h3>
-              <ul className="flint-checks" style={{ marginTop: "0.75rem" }}>
-                {REFUSALS.map((item) => (
-                  <li key={item}>
-                    <span>{item}</span>
-                    <span className="flint-tag flint-tag-no">No</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-          <p className="flint-muted" style={{ fontSize: "var(--flint-text-sm)", marginTop: "1.25rem" }}>
-            A receipt proves a state transition happened for a specific amount, signed by
-            the address the program required. It does not prove the real-world work was
-            delivered — that is the payer&rsquo;s attestation, not a cryptographic fact.
-          </p>
-        </div>
-      </section>
     </div>
   );
 }

@@ -1,35 +1,22 @@
 /**
- * One agreement, and what its current state allows (acceptances 7.1.3, 7.1.4).
+ * One agreement, as the person who was sent the link sees it (Section 5a).
  *
- * This page is the human flow's centre of gravity, and it has one job beyond
- * showing terms: **offer exactly the actions the current state permits, and
- * explain the ones it does not.** The state machine (Section 4.2) has five states
- * and each one allows something different, so each is rendered with its own
- * affordance rather than a single "settle" button that is sometimes wrong:
+ * This page has exactly one job: let the payer understand the request and pay
+ * it. Everything the earlier version led with — the FRS-1 field table, the
+ * escrow and agreement accounts, the condition enum, the unix expiry, the
+ * agreement id, the receipts section — is protocol-level detail that does not
+ * change what a payer does, so it now lives in the single closed *Technical
+ * details* disclosure rendered by `PaymentRequest` (and, in full, on /docs).
  *
- *   - `pending`  → nothing to do but share the Blink. No release (no funds, no
- *                  payer) and no refund (no funds, not expired).
- *   - `funded`, before expiry → **release**, payer only. The button is rendered
- *                  for the payer and *explained* for everyone else, because
- *                  "the button is missing" is a worse answer than "only the
- *                  payer can do this, and the payer is <address>".
- *   - `funded`, after expiry → release is gone (row 3) and **refund** is
- *                  available to **anyone**. This is the acceptance criterion that
- *                  is easiest to get wrong in the honest direction: making the
- *                  payer wait for their own money back is a liveness bug, not a
- *                  safety feature, so the affordance is offered to every connected
- *                  wallet and the copy is explicit that the cranker receives
- *                  nothing while the payer receives everything.
- *   - `released` / `refunded` → terminal. Nothing transitions out (Section 4.2),
- *                  so the page says so instead of offering a dead button.
- *   - `cancelled` → the account is closed (Section 4.6), so this page cannot even
- *                  load it; the sibling error state handles it.
+ * The settlement affordances are the one exception, and only in the one state
+ * where they exist: a *funded* agreement is the only state with a choice in it
+ * (Section 4.2), and the payer is the one who makes that choice. So the panel is
+ * rendered for `funded` and nowhere else — a pending agreement has nothing to
+ * settle, and the terminal states have nothing left to do.
  *
- * Everything rendered is read fresh from chain on each request (Section 6.2), and
- * the client re-reads it after a settlement by refreshing — so the status on
- * screen is never the status this component hoped for.
- *
- * Structure only, per Section 9.
+ * Every value on screen is read fresh from chain on each request (Section 6.2),
+ * including the "now" behind the deadline, which comes from the Clock sysvar
+ * rather than from this server's or the reader's clock.
  */
 
 import Link from "next/link";
@@ -39,22 +26,55 @@ import {
   deployment,
   loadAgreementView,
 } from "@/lib/agreement-view";
-import { getConnection, explorerAddressUrl } from "@/lib/solana";
+import { CLUSTER, explorerAddressUrl, getConnection } from "@/lib/solana";
+import { AssetLabel } from "@/components/asset-label";
+import { PaymentRequest } from "@/components/payment-request";
 import { SettlementPanel } from "@/components/settlement-panel";
 import { Term } from "@/components/agreement-ui";
 
 export const dynamic = "force-dynamic";
 
-/** The state as a tag. The tone says which way the money went, not just where it is. */
-const STATUS_TONES: Record<string, string> = {
-  pending: "flint-tag-gold",
-  funded: "flint-tag-gold",
-  released: "flint-tag-ok",
-  refunded: "flint-tag-warn",
-  cancelled: "flint-tag-warn",
-};
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
 
-/** Both failure modes a link can have, stated rather than thrown at a person. */
+/**
+ * `2 October 2026, 14:30 UTC` — the only date format on the payer's page.
+ *
+ * Assembled from UTC parts rather than through `toLocaleString`, which would
+ * render differently per server locale and per ICU build; a deadline that reads
+ * differently in two places is the kind of difference a payment cannot afford.
+ * The seconds-level ISO form and the raw unix value stay in the technical
+ * disclosure, where an exact value is what is wanted.
+ */
+function humanDate(unixSeconds: number): string {
+  const at = new Date(unixSeconds * 1000);
+  const day = at.getUTCDate();
+  const month = MONTHS[at.getUTCMonth()];
+  const year = at.getUTCFullYear();
+  const hour = String(at.getUTCHours()).padStart(2, "0");
+  const minute = String(at.getUTCMinutes()).padStart(2, "0");
+  return `${day} ${month} ${year}, ${hour}:${minute} UTC`;
+}
+
+/**
+ * Both failure modes a link can have, stated rather than thrown at a person.
+ *
+ * A link carries the agreement id *and* the recipient's address, because
+ * together they are the agreement's identity on chain — so a bare id is a bad
+ * link rather than a missing agreement, and the two are worth telling apart.
+ */
 function LinkProblem({ heading, children }: { heading: string; children: React.ReactNode }) {
   return (
     <div className="flint-stack">
@@ -117,121 +137,123 @@ export default async function AgreementPage({
   }
 
   const { agreement } = view;
-  const expiresIn = new Date(agreement.expiresAt * 1000)
-    .toISOString()
-    .replace("T", " ")
-    .slice(0, 19);
+  const expiresAtHuman = humanDate(agreement.expiresAt);
+  const nowHuman = humanDate(view.now);
+
+  /**
+   * The technical details disclosure: every protocol fact about this agreement,
+   * in one place, closed until asked for.
+   *
+   * Server-rendered and handed to the client card as children — the facts come
+   * from chain reads that only the server does, and passing them as props would
+   * be the same bytes with more ceremony.
+   */
+  const technical = (
+    <>
+      <dl className="flint-terms" style={{ marginTop: "var(--flint-space-3)" }}>
+        <Term term="Status">
+          <code>{agreement.status}</code>
+          {view.expired && agreement.status === "funded" ? " (past its deadline)" : ""}
+        </Term>
+        <Term term="Amount">
+          <span className="flint-num">{agreement.amount}</span> base units —{" "}
+          <span className="flint-num">{view.amountDisplay}</span>{" "}
+          <AssetLabel symbol={view.symbol} />
+          {view.decimals === null ? " (the asset's scale could not be read)" : ""}
+        </Term>
+        <Term term="Asset">
+          <a href={`https://explorer.solana.com/address/${agreement.asset}?cluster=${CLUSTER}`}>
+            <code>{agreement.asset}</code>
+          </a>
+        </Term>
+        <Term term="Recipient">
+          <code>{agreement.recipientAddress}</code>
+        </Term>
+        <Term term="Payer">
+          {agreement.payerAddress === null ? (
+            <span className="flint-muted">
+              none yet — whoever funds this agreement becomes the payer
+            </span>
+          ) : (
+            <code>{agreement.payerAddress}</code>
+          )}
+        </Term>
+        <Term term="Expires">
+          <span className="flint-num">{expiresAtHuman}</span>{" "}
+          <span className="flint-muted">
+            (unix <span className="flint-num">{agreement.expiresAt}</span>, chain clock)
+          </span>
+        </Term>
+        <Term term="Condition">
+          <code>{agreement.condition.type}</code> — {agreement.condition.description}
+        </Term>
+        <Term term="Escrow">
+          <a href={explorerAddressUrl(view.escrow)}>
+            <code>{view.escrow}</code>
+          </a>
+        </Term>
+        <Term term="Agreement account">
+          <a href={explorerAddressUrl(view.pda)}>
+            <code>{view.pda}</code>
+          </a>
+        </Term>
+        <Term term="Id">
+          <code>{agreement.id}</code>
+        </Term>
+        {agreement.memo === "" ? null : <Term term="Note as written">{agreement.memo}</Term>}
+        {agreement.disputedFlag ? (
+          <Term term="Disputed">
+            flagged{agreement.disputedAt === null ? "" : ` at ${agreement.disputedAt}`}. Advisory
+            only — it never moves money and never blocks a refund.
+          </Term>
+        ) : null}
+      </dl>
+
+      <p className="flint-fine">
+        A receipt is the <em>settlement</em> transaction — the release or the refund. Flint stores
+        none: it is derived from the chain, so paste the signature into the verification page and
+        it is recomputed against the account rather than trusted.
+      </p>
+      <p className="flint-row">
+        <Link href="/verify">Verify a receipt</Link>
+        <Link href="/docs">How an agreement works</Link>
+      </p>
+    </>
+  );
 
   return (
     <div className="flint-stack">
-      <header>
-        <p className="flint-eyebrow">Agreement</p>
-        <h1 className="flint-page-title">
-          {agreement.title === "" ? "Payment agreement" : agreement.title}
-        </h1>
-        <p className="flint-muted" style={{ marginTop: "var(--flint-space-3)" }}>
-          An FRS-1 payment agreement. Everything below was read from Solana devnet
-          when this page loaded, and the status is recomputed from the account
-          rather than remembered by this page.
-        </p>
-
-        <p className="flint-row" style={{ marginTop: "var(--flint-space-4)" }}>
-          <span className="flint-muted">Status</span>
-          <span className={`flint-tag ${STATUS_TONES[agreement.status] ?? ""}`}>
-            {agreement.status}
-          </span>
-          {view.expired && agreement.status === "funded" ? (
-            <span className="flint-tag flint-tag-warn">expired</span>
-          ) : null}
-        </p>
-      </header>
-
-      <SettlementPanel
+      <PaymentRequest
         id={view.id}
         recipient={view.recipient}
+        pda={view.pda}
+        title={agreement.title}
+        memo={agreement.memo}
         amountDisplay={view.amountDisplay}
         symbol={view.symbol}
         status={agreement.status}
         expired={view.expired}
-        payerAddress={agreement.payerAddress}
-        expiresAtIso={expiresIn}
-        secondsUntilExpiry={view.secondsUntilExpiry}
+        expiresAtHuman={expiresAtHuman}
+        nowHuman={nowHuman}
+        cluster={CLUSTER}
+        technical={technical}
       />
 
-      <section className="flint-card" aria-labelledby="terms-heading">
-        <h2 id="terms-heading">The terms</h2>
-        <dl className="flint-terms" style={{ marginTop: "var(--flint-space-4)" }}>
-          <Term term="Amount">
-            <span className="flint-num">{view.amountDisplay}</span> {view.symbol}
-          </Term>
-          <Term term="Asset">
-            <code>{agreement.asset}</code>
-          </Term>
-          <Term term="Recipient">
-            <code>{agreement.recipientAddress}</code>
-          </Term>
-          <Term term="Payer">
-            {agreement.payerAddress === null ? (
-              <span className="flint-muted">
-                none yet — whoever funds this agreement becomes the payer
-              </span>
-            ) : (
-              <code>{agreement.payerAddress}</code>
-            )}
-          </Term>
-          <Term term="Expires">
-            <span className="flint-num">{expiresIn}</span> UTC{" "}
-            <span className="flint-muted">
-              (unix <span className="flint-num">{agreement.expiresAt}</span>, chain clock)
-            </span>
-          </Term>
-          <Term term="Condition">
-            <code>{agreement.condition.type}</code> — {agreement.condition.description}
-          </Term>
-          <Term term="Escrow">
-            <a href={explorerAddressUrl(view.escrow)}>
-              <code>{view.escrow}</code>
-            </a>
-          </Term>
-          <Term term="Agreement account">
-            <a href={explorerAddressUrl(view.pda)}>
-              <code>{view.pda}</code>
-            </a>
-          </Term>
-          <Term term="Id">
-            <code>{agreement.id}</code>
-          </Term>
-          {agreement.memo === "" ? null : <Term term="Note">{agreement.memo}</Term>}
-          {agreement.disputedFlag ? (
-            <Term term="Disputed">
-              yes, flagged{agreement.disputedAt === null ? "" : ` at ${agreement.disputedAt}`}.
-              This is advisory only — it never moves money and never blocks a
-              refund.
-            </Term>
-          ) : null}
-        </dl>
-      </section>
-
-      <section className="flint-card flint-stack" aria-labelledby="receipt-heading">
-        <h2 id="receipt-heading">Receipts</h2>
-        <p className="flint-muted">
-          A receipt is the <em>settlement</em> transaction — the release or the
-          refund. Flint stores none: it is derived from the chain, so paste the
-          signature into the verification page and it will be recomputed against
-          the account rather than trusted.
-        </p>
-        <p>
-          <Link className="flint-button flint-primary" href="/verify/">
-            Verify a receipt
-          </Link>
-        </p>
-        <p className="flint-muted">
-          A receipt proves a specific amount moved under specific terms, authorised
-          by the address the program required. It does not prove the work was
-          actually delivered — that is the payer&rsquo;s attestation, and no
-          signature turns it into a fact.
-        </p>
-      </section>
+      {/* Funded is the only state with a choice in it, and the payer is the one
+          who makes it (4.2) — so this is the only state that renders the panel. */}
+      {agreement.status === "funded" ? (
+        <SettlementPanel
+          id={view.id}
+          recipient={view.recipient}
+          amountDisplay={view.amountDisplay}
+          symbol={view.symbol}
+          status={agreement.status}
+          expired={view.expired}
+          payerAddress={agreement.payerAddress}
+          expiresAtIso={expiresAtHuman}
+          secondsUntilExpiry={view.secondsUntilExpiry}
+        />
+      ) : null}
     </div>
   );
 }

@@ -37,6 +37,11 @@ app/.data/
 FLINT_DESIGN.md
 FLINT_SECURITY_AUDIT.md
 
+# Working instructions from the owner, same reasoning: internal direction, not
+# product or documentation.
+PHASE*.md
+FLINT_PHASE*.md
+
 # --- Editor / OS / logs ---
 .DS_Store
 Thumbs.db
