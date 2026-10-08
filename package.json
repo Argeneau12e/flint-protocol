@@ -9,6 +9,7 @@
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:policy": "mocha --config .mocharc.agent.json --spec tests/agent/policy-engine.test.ts",
+    "test:fees": "mocha --config .mocharc.agent.json --spec tests/agent/fees.test.ts",
     "test:agent": "mocha --config .mocharc.agent.json",
     "test:human": "mocha --config .mocharc.agent.json --spec tests/human/human-flow.test.ts"
   },

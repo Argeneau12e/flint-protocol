@@ -201,10 +201,11 @@ export default async function AgreementPage({
           <code>{agreement.id}</code>
         </Term>
         {agreement.memo === "" ? null : <Term term="Note as written">{agreement.memo}</Term>}
-        {agreement.disputedFlag ? (
+        {agreement.status === "disputed" ? (
           <Term term="Disputed">
-            flagged{agreement.disputedAt === null ? "" : ` at ${agreement.disputedAt}`}. Advisory
-            only — it never moves money and never blocks a refund.
+            {agreement.disputeReason === null ? "disputed" : `disputed (${agreement.disputeReason})`}
+            {agreement.disputedAt === null ? "" : ` at ${agreement.disputedAt}`}. Only the
+            arbiter&apos;s ruling or the arbiter-timeout split moves the funds now.
           </Term>
         ) : null}
       </dl>

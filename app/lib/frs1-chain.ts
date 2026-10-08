@@ -17,9 +17,14 @@
  */
 
 import { randomBytes } from "node:crypto";
-import type { Frs1Agreement, ConditionType, AgreementStatus } from "./frs1-types";
+import type {
+  Frs1Agreement,
+  ConditionType,
+  AgreementStatus,
+  DisputeReason,
+} from "./frs1-types";
 
-/** The Anchor-decoded account shape this module consumes. */
+/** The Anchor-decoded account shape this module consumes (Section 13.1). */
 export interface DecodableAgreement {
   id: number[] | Buffer;
   payerAddress: { toBase58(): string } | null;
@@ -35,9 +40,15 @@ export interface DecodableAgreement {
     conditionType: Record<string, Record<string, never>>;
     description: string;
   };
-  disputedFlag: boolean;
+  reviewWindowSecs: number;
+  claimedAt: { toNumber(): number } | null;
+  evidenceHash: number[] | Buffer;
+  evidenceRef: string;
   disputedAt: { toNumber(): number } | null;
-  handle?: string;
+  arbiterDeadline: { toNumber(): number } | null;
+  disputeReason: Record<string, Record<string, never>> | null;
+  feeAmount: { toString(): string };
+  handle?: string | null;
   agentPolicy?: { spendCap: { toString(): string }; allowlist: { toBase58(): string }[] } | null;
 }
 
@@ -112,7 +123,7 @@ function readEnumKey(
   return keys[0];
 }
 
-/** Anchor `{ pending: {} }` -> FRS-1 `"pending"`. */
+/** Anchor `{ pending: {} }` -> FRS-1 `"pending"` (Section 13.2). */
 export function toFRS1Status(
   value: Record<string, Record<string, never>>,
 ): AgreementStatus {
@@ -121,10 +132,16 @@ export function toFRS1Status(
       return "pending";
     case "funded":
       return "funded";
+    case "deliveryClaimed":
+      return "deliveryClaimed";
+    case "disputed":
+      return "disputed";
     case "released":
       return "released";
     case "refunded":
       return "refunded";
+    case "split":
+      return "split";
     case "cancelled":
       return "cancelled";
     default:
@@ -146,6 +163,35 @@ export function toFRS1ConditionType(
     default:
       throw new Error(
         `Unknown condition type: ${readEnumKey(value, "condition.type")}`,
+      );
+  }
+}
+
+/**
+ * Anchor `{ notAsDescribed: {} }` -> FRS-1 `"notAsDescribed"`.
+ *
+ * The on-chain enum stores only the PascalCase variant name; the FRS-1
+ * `DISPUTE_REASON_CODES` mapping is index + 1 of that variant. Unknown keys
+ * fail loudly, exactly like an unknown status: a dispute reason that renders
+ * as the wrong category would mislead the recipient and the arbiter.
+ */
+export function toFRS1DisputeReason(
+  value: Record<string, Record<string, never>>,
+): DisputeReason {
+  switch (readEnumKey(value, "disputeReason")) {
+    case "notAsDescribed":
+      return "notAsDescribed";
+    case "incomplete":
+      return "incomplete";
+    case "notReceived":
+      return "notReceived";
+    case "quality":
+      return "quality";
+    case "other":
+      return "other";
+    default:
+      throw new Error(
+        `Unknown dispute reason: ${readEnumKey(value, "disputeReason")}`,
       );
   }
 }
@@ -178,8 +224,15 @@ export function toFrs1Agreement(
       type: toFRS1ConditionType(account.condition.conditionType),
       description: account.condition.description,
     },
-    disputedFlag: account.disputedFlag,
+    reviewWindowSecs: account.reviewWindowSecs,
+    claimedAt: account.claimedAt ? account.claimedAt.toNumber() : null,
+    evidenceHash: Buffer.from(account.evidenceHash).toString("hex"),
+    evidenceRef: account.evidenceRef,
     disputedAt: account.disputedAt ? account.disputedAt.toNumber() : null,
+    arbiterDeadline: account.arbiterDeadline ? account.arbiterDeadline.toNumber() : null,
+    disputeReason:
+      account.disputeReason === null ? null : toFRS1DisputeReason(account.disputeReason),
+    feeAmount: account.feeAmount.toString(),
   };
 
   if (account.handle !== undefined && account.handle !== null) {

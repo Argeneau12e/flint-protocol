@@ -344,7 +344,8 @@ describe("Flint human flow — Blink funding, release, and permissionless refund
       body: JSON.stringify({
         recipient: recipient.publicKey.toBase58(),
         title: "Landing page build",
-        amount: "2.5",
+
+        amount: "20.0",
         memo: "Signed off on staging. Release when live.",
         expiryMinutes: 60,
       }),
@@ -557,7 +558,7 @@ describe("Flint human flow — Blink funding, release, and permissionless refund
 
     const proposed = await proposeAgreement(connection, config.programId, recipient, {
       id,
-      amount: "1000000",
+      amount: "20000000",
       asset: mint,
       expiresAt,
       title: "Consulting hours, July",
@@ -578,8 +579,8 @@ describe("Flint human flow — Blink funding, release, and permissionless refund
     assert.equal(funded.agreement.status, "funded");
     assert.equal(
       (await getAccount(connection, payerAta)).amount.toString(),
-      (payerBefore - 1000000n).toString(),
-      "the payer funded it directly this time, and was debited exactly 1000000",
+      (payerBefore - 20000000n).toString(),
+      "the payer funded it directly this time, and was debited exactly 20000000",
     );
 
     await waitForExpiry(expiresAt);
@@ -693,3 +694,11 @@ describe("Flint human flow — Blink funding, release, and permissionless refund
     assert.include(((await missing.json()) as { error: string }).error, "cancelled");
   });
 });
+
+
+
+
+
+
+
+

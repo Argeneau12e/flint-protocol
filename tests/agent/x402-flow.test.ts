@@ -111,7 +111,7 @@ const connection = getConnection();
 const service: LoadedKeypair = loadKeypair(config.serviceKeypairPath, "service");
 const agent: LoadedKeypair = loadKeypair(config.agentKeypairPath, "agent");
 const mint = config.assetMint;
-const price = config.priceBaseUnits;
+const price = "20000000";
 
 let responder: { url: string; close: () => Promise<void> };
 
@@ -235,8 +235,9 @@ describe("agent / x402 flow on devnet (Section 7.2)", () => {
     assert.equal(agreement.amount, price);
     assert.equal(agreement.asset, mint.toBase58());
     assert.equal(agreement.condition.type, "manual-confirmation");
-    assert.isFalse(agreement.disputedFlag);
     assert.isNull(agreement.disputedAt);
+    assert.isNull(agreement.claimedAt);
+    assert.equal(agreement.disputeReason, null);
     assert.isUndefined(agreement.receiptProof, "no receipt before settlement (Section 4.7)");
     assert.match(
       agreement.id,

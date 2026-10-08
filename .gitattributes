@@ -1,0 +1,8 @@
+# Shell scripts must keep LF endings. Git checked out with CRLF on Windows would
+# otherwise produce "set: pipefail: invalid option name" the moment one of these
+# runs under bash.
+*.sh text eol=lf
+
+# Keep the generated Solana/Anchor binaries out of diffs and line-ending churn.
+*.so binary
+*.json -diff

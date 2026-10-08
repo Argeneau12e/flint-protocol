@@ -110,55 +110,87 @@ a workaround.** The "No" rows are what make the "Yes" rows trustworthy.
 
 ### 4.1 Schema
 
+**Rewritten to match the shipped program.** The per-field on-chain table
+(field types, byte bounds, PDA layout) is Section 13.1; this is the FRS-1
+client-facing shape, which is what `app/lib/frs1-types.ts` declares.
+
 ```
-id                 uuid-v4
+id                 uuid-v4 (16 raw bytes on-chain; also a PDA seed)
 payerAddress       the funding wallet — set at pending→funded, null before that
 recipientAddress   the wallet the agreement pays out to — set at creation
-title              string
-amount             number, fixed at creation, immutable once funded
+title              string (≤128 bytes)
+amount             u64 base units, fixed at creation, immutable once funded
 asset              SPL token mint (Pubkey) — e.g. USDC's mint
 escrowAddress      the escrow's token account (ATA), not the agreement PDA — see 4.5
-memo               string
-expiresAt          unix timestamp
-status             pending | funded | released | refunded | cancelled
+memo               string (≤512 bytes)
+expiresAt          unix timestamp; Clock sysvar only
+status             pending | funded | deliveryClaimed | disputed | released
+                    | refunded | cancelled | split — see 4.2
 condition          { type, description } — see 4.3
-disputedFlag       boolean, does not change custody — see 4.2
-disputedAt         optional timestamp, set/cleared alongside disputedFlag
-handle             optional human-readable handle
+reviewWindowSecs   6h | 12h | 24h | 48h; default 24h; stored at creation
+claimedAt          optional timestamp, set once by claim_delivery
+evidenceHash       SHA-256 of the canonical evidence manifest (32 bytes);
+                    all-zeros means "no claim" and is refused as a claim — see 4.8
+evidenceRef        compact locator `flint://e/<id>` (≤96 bytes), resolved by
+                    the app's API route — see 4.8
+disputedAt         optional timestamp, set by dispute
+arbiterDeadline    disputedAt + the Config arbiter window in force at dispute
+                    time — frozen onto the agreement, never re-read — see 4.9
+disputeReason      1..=5: not-as-described, incomplete, not-received, quality,
+                    other (Borsh variant index is code − 1) — see 13.3
+feeAmount          protocol fee in base units, computed and locked at
+                    creation from the fee table — see 4.10
+handle             optional human-readable handle (≤64 bytes)
 agentPolicy        optional: { spendCap, allowlist } — for autonomous payers
-receiptProof       settlement (release/refund) tx signature — see 4.4
+receiptProof       settlement (release/refund) tx signature — app layer only,
+                    never written by the program — see 4.4
 ```
+
+`Config` (PDA `["config"]`, created once by `init_config`): `admin` (the
+upgrade authority at init; rotates roles), `treasury` (receives fees),
+`arbiter` (only signer `resolve_dispute` accepts), `arbiter_timeout_secs`
+(default 72h), `min_agreement` (default 20 whole tokens, not rotatable).
 
 ### 4.2 Status state machine
 
-**Corrected after Phase-0 planning review — this supersedes any earlier
-version.** The recipient creates (proposes) an agreement; the payer is
-whoever funds it first. `payerAddress` does not exist until funding, so no
-"payer" authority exists on a pending agreement — see 4.5 for the full
-authority model.
+**Rewritten to match the shipped program (Phase 6).** The recipient creates;
+the payer is whoever funds it first. `payerAddress` does not exist until
+funding — see 4.5 for the authority model.
 
-| Transition | Trigger | Who can trigger it |
+| Transition | Instruction | Who can trigger it |
 |---|---|---|
-| pending → funded | Someone deposits the stated `amount` into the escrow ATA — that address becomes `payerAddress`, permanently | Whoever funds it (first funder wins; this is what sets the payer) |
-| pending → cancelled | Withdrawn before funding — terminal, no funds moved | Recipient only (no payer exists yet) |
-| funded → released | Payer signs a confirmation that the condition is met | Payer only |
-| funded → refunded | `expiresAt` has passed with no confirmation — permissionlessly claimable | Anyone can call it, but funds always go to the stored `payerAddress`, never to the caller |
-| funded → funded (disputedFlag=true / false) | Recipient sets or clears the flag before expiry | Recipient only, either direction |
+| pending → funded | deposit the stated `amount` into the escrow ATA; that address becomes `payerAddress`, permanently | Whoever funds it (first funder wins) |
+| pending → cancelled | withdrawn before funding — account and empty ATA close, rent returns | Recipient only (no payer exists yet) |
+| funded → deliveryClaimed | claim with `evidenceHash` + `evidenceRef` | Stored recipient only, before `expiresAt` |
+| funded → released | payer signs the release | Stored payer only, any time while funded |
+| funded → refunded | `expiresAt` passed with no claim — permissionless crank | Anyone; funds always go to the stored `payerAddress` |
+| deliveryClaimed → released | review window closes with no dispute — silence is a decision | Anyone (crank), after `claimedAt + reviewWindowSecs` |
+| deliveryClaimed → released | payer signs the release during the review window | Stored payer only |
+| deliveryClaimed → disputed | payer files a dispute with reason 1..=5; stores `disputedAt` and freezes `arbiterDeadline` | Stored payer only |
+| disputed → released / refunded / split | arbiter ruling (`Split { recipientBps }`, 1..=9999) | Config `arbiter` only |
+| disputed → split | arbiter window passed with no ruling — fixed 50/50, fee halved with the recipient's share | Anyone (crank), after the **stored** `arbiterDeadline` |
+| release/refund terminals | `released`, `refunded`, `cancelled`, `split` are terminal | — |
 
 Rules that follow directly from this table (enforce all of them):
-- Terms (`amount`, `recipientAddress`, `asset`, `condition`) are **immutable
-  once funded**. No instruction may write to these fields on a funded PDA.
+- Terms (`amount`, `recipientAddress`, `asset`, `condition`, `expiresAt`) are
+  **immutable once funded**. No instruction may write these fields on a funded
+  agreement.
 - **No partial settlement.** An agreement pays its full `amount` or nothing.
 - **Once funded, the payer cannot unilaterally reclaim funds before expiry.**
   This is the rule that makes it escrow rather than a delayed transfer.
-  `disputedFlag` never moves funds by itself — only a payer confirmation or
-  `expiresAt` passing changes custody.
-- `released` and `refunded` are terminal. Nothing transitions out of them.
-- A known, accepted v1 limitation: if an agreement is funded, not yet
-  expired, and both sides want to walk away, there is no instruction for
-  that — it sits funded until either a release confirmation or expiry. This
-  is a Boundary consequence (Section 3), not a bug. A mutual early-release
-  path is a fair roadmap item, not a v1 task.
+- **Once delivery is claimed, `expiresAt` stops applying.** The review window
+  governs instead; the exemption is keyed off the status, not off a field a
+  caller could set. Before a claim, the refund-after-expiry path stays
+  permissionless so no escrow can strand (liveness).
+- **Protocol fee:** taken from the recipient's payout so the payer always pays
+  exactly `amount`; bands over whole tokens — 20–49.99 → 1, 50–99.99 → 2,
+  100–249.99 → 4, 250–499.99 → 8, 500–999.99 → 15, 1,000–2,499.99 → 30,
+  2,500–4,999.99 → 60, 5,000–9,999.99 → 100, ≥10,000 → 1%; minimum agreement
+  20 whole tokens. Locked into `feeAmount` at creation; refunds never pay a
+  fee. Full table and split scaling: 13.5.
+- **Stored arbiter deadline:** `dispute` reads `arbiter_timeout_secs` once and
+  stores `arbiterDeadline` on the agreement; later Config rotations move
+  neither direction of an in-flight dispute — see 4.9.
 
 ### 4.3 What "condition" means in v1
 
@@ -229,11 +261,13 @@ that imply otherwise.
   create and fund, so both checks are required. Without this, a released
   agreement could become permanently unpayable (Section 5, row 3 requires
   `now < expiresAt` to release) while still passing a naive funding check.
-- **`flag_dispute` requires `status == Funded`.** Rejected on `pending`
-  (nothing to dispute) and on `released`/`refunded`/`cancelled` (already
-  terminal). No expiry check — the flag must remain settable/clearable past
-  expiry, since it is advisory-only and must never block the permissionless
-  refund path (Section 4.2's liveness guarantee).
+- **Disputes run through `dispute`, not a flag.** A dispute can only be filed
+  from `deliveryClaimed` (there must be a claimed delivery to dispute), only
+  by the stored payer, and it moves custody risk rather than sitting beside
+  it: once disputed, neither party can move the funds alone — only the
+  arbiter's ruling or the arbiter-timeout split does (Section 4.2). The old
+  advisory `disputedFlag` is gone; `disputedAt`/`arbiterDeadline` are the
+  on-chain record.
 - **`cancel` closes the account**, returning rent to the recipient. Safe
   because a cancelled-while-`pending` agreement never held funds or produced
   a receipt. **`release` and `refund` do not close their accounts** — the
@@ -258,6 +292,52 @@ that imply otherwise.
   (captured at submission time, or looked up from the account's transaction
   history) and matches the settlement transaction per 4.4's
   verify-by-recomputing-from-the-account model.
+
+### 4.8 Evidence (delivery claim)
+
+`claim_delivery` requires a non-zero 32-byte `evidenceHash` and a non-empty
+`evidenceRef` (≤96 bytes) and refuses an already-claimed agreement, so
+evidence cannot be swapped after review begins. The app hashes each uploaded
+file with SHA-256 (Web Crypto) and builds a canonical JSON manifest (sorted
+keys, no whitespace) whose SHA-256 becomes `evidenceHash`; `evidenceRef` is
+`flint://e/<id>` with an unguessable blob id, resolved by an API route.
+`/verify` reads the on-chain hash, fetches the manifest, recomputes and
+compares — and compares any dropped file's own SHA-256 against the manifest's
+items. Uploaded HTML/SVG is never rendered; downloads are served as
+attachments with `nosniff`.
+
+### 4.9 The stored arbiter deadline
+
+`dispute` reads `Config.arbiter_timeout_secs` once, at dispute time, and
+stores `disputed_at + arbiter_timeout_secs` on the agreement as
+`arbiter_deadline`. `split_after_arbiter_timeout` checks that stored field
+and never the Config, so a later admin rotation cannot move an in-flight
+dispute's deadline in either direction. Both directions are asserted in the
+test suite.
+
+### 4.10 Protocol fee
+
+Bands over whole tokens, taken from the recipient's payout so the payer pays
+exactly `amount`:
+
+| Amount (whole tokens) | Fee |
+|---|---|
+| 20–49.99 | 1 |
+| 50–99.99 | 2 |
+| 100–249.99 | 4 |
+| 250–499.99 | 8 |
+| 500–999.99 | 15 |
+| 1,000–2,499.99 | 30 |
+| 2,500–4,999.99 | 60 |
+| 5,000–9,999.99 | 100 |
+| ≥ 10,000 | 1% of the amount |
+
+`feeAmount` is computed once at creation and stored; settlement reads the
+stored field. On an arbiter split the fee follows the recipient's share; a
+refund is never charged. The minimum agreement is 20 whole tokens. The same
+table lives in `programs/flint-escrow/src/fees.rs` and `app/lib/fees.ts`,
+and `tests/agent/fees.test.ts` pins every boundary (19.99 rejected by
+`create`, then 20 through 25000).
 
 ---
 
@@ -299,7 +379,7 @@ so the mapping to this table is obvious (e.g. `test_rejects_unauthorized_release
 
 | Component | Implementation |
 |---|---|
-| Settlement | Anchor program — escrow PDA with `create`, `fund`, `release`, `refund`, `cancel`, `flag_dispute` instructions, enforcing Section 4.2's state machine exactly |
+| Settlement | Anchor program — escrow PDA with `create`, `fund`, `cancel`, `release`, `refund`, `claim_delivery`, `dispute`, `release_after_review`, `resolve_dispute`, `split_after_arbiter_timeout` (plus `init_config`/`set_config_roles`), enforcing Section 4.2's state machine exactly |
 | Human payment UX | Solana Actions + Blinks, Phantom-first wallet adapter |
 | Agent settlement | x402 responder on Solana — genuine x402 envelope (402, `x402Version`, `accepts[]`, `X-PAYMENT`/`X-PAYMENT-RESPONSE`); settlement is direct through the Phase 1 escrow program, no facilitator — see 6.4 |
 | Agent policy layer | Deterministic policy engine: spend cap + allowlist check, decision log. **No LLM call in the pay/no-pay decision path** — this must be plain deterministic code, testable without a model in the loop |
@@ -454,7 +534,13 @@ flint/
 │       │   │   ├── release.rs
 │       │   │   ├── refund.rs
 │       │   │   ├── cancel.rs
-│       │   │   └── flag_dispute.rs
+│       │   │   ├── claim_delivery.rs
+│       │   │   ├── dispute.rs
+│       │   │   ├── release_after_review.rs
+│       │   │   ├── resolve_dispute.rs
+│       │   │   ├── split_after_arbiter_timeout.rs
+│       │   │   ├── init_config.rs
+│       │   │   └── set_config_roles.rs
 │       │   └── errors.rs
 │       └── tests/
 │           └── flint-escrow.ts     # one test per Section 5 row, minimum
@@ -513,7 +599,158 @@ each — do not self-advance to the next phase.
 - Devnet only. Nothing here should ever reference a mainnet key or touch
   mainnet.
 
-## 13. Companion files (both gitignored — never commit either)
+## 13. FRS-1 v2 — the implemented protocol (rewrite of the Section 4.1/4.2 shape)
+
+**This section is the as-built, field-level specification.** Section 4 is the
+FRS-1 spec written against the shipped program (rewritten in Phase 6); 4.1/4.2
+give the client-facing schema and state machine, and this section gives the
+on-chain layout, the exact instruction set, and the rationale for each rule.
+Where a detail is needed — byte bounds, PDA seeds, error conditions — this
+section is what `anchor build` produced and what
+`programs/flint-escrow/tests/flint-escrow.ts` asserts. The original v1 design
+stored a `disputedFlag` that moved no money and had no delivery/review/arbiter
+model at all; v2 replaced that flag with a real delivery claim, a review
+window, and an arbiter-backed dispute path.
+
+### 13.1 Account schemas
+
+`FlintAgreement` (PDA: `["agreement", recipient, id]`, `id` = 16 raw bytes):
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `[u8; 16]` | uuid-v4 bytes; also a PDA seed |
+| `payer_address` | `Option<Pubkey>` | `None` until funding; first funder wins and never changes |
+| `recipient_address` | `Pubkey` | set at creation; immutable once funded |
+| `title` | `String` (≤128) | |
+| `amount` | `u64` | base units, fixed at creation |
+| `asset` | `Pubkey` | SPL mint |
+| `escrow_address` | `Pubkey` | the escrow ATA (owned by the agreement PDA) |
+| `memo` | `String` (≤512) | |
+| `expires_at` | `i64` | unix seconds, Clock sysvar only |
+| `status` | `AgreementStatus` | see 13.2 |
+| `condition` | `Condition` | see 4.3; only `manual-confirmation` is enforced |
+| `review_window_secs` | `u32` | one of 6h/12h/24h/48h; default 24h |
+| `claimed_at` | `Option<i64>` | set once by `claim_delivery` |
+| `evidence_hash` | `[u8; 32]` | all-zeros means "no claim"; `claim_delivery` refuses zeros |
+| `evidence_ref` | `String` (≤96) | `flint://e/<id>`, non-empty at claim time |
+| `disputed_at` | `Option<i64>` | set by `dispute` |
+| `arbiter_deadline` | `Option<i64>` | **stored** at dispute time (see 13.4) |
+| `dispute_reason` | `Option<DisputeReason>` | 1..=5 by name (see 13.3) |
+| `fee_amount` | `u64` | base units, **locked at creation** (see 13.5) |
+| `handle` | `Option<String>` (≤64) | display-only in v1 |
+| `agent_policy` | `Option<AgentPolicy>` | `{ spend_cap, allowlist }` |
+| `receipt_proof` | `Option<String>` (≤96) | never written by the program — see 4.4 |
+
+`Config` (PDA: `["config"]`):
+
+| Field | Type | Notes |
+|---|---|---|
+| `admin` | `Pubkey` | the upgrade authority at `init_config`; may rotate roles |
+| `treasury` | `Pubkey` | receives every fee, in the agreement's asset |
+| `arbiter` | `Pubkey` | the only signer `resolve_dispute` accepts |
+| `arbiter_timeout_secs` | `u64` | default 72h; frozen onto an agreement at dispute time |
+| `min_agreement` | `u64` | whole tokens (default 20); **not** rotatable |
+| `bump` | `u8` | config PDA bump |
+
+### 13.2 `AgreementStatus`
+
+```
+Pending -> Funded -> DeliveryClaimed -> Released
+  |          |            |
+  |          |            +-> Disputed -> Released   (arbiter rules: release)
+  |          |            |           -> Refunded    (arbiter rules: refund)
+  |          |            |           -> Split       (arbiter rules: split, or 50/50 timeout)
+  |          |            +-> Released               (review window closes: silence is a decision)
+  |          +-> Released                            (payer-signed release, any time while funded)
+  |          +-> Refunded                            (permissionless after expiry, before any claim)
+  |          +-> Cancelled                           (recipient only, before funding)
+  +-> Cancelled
+```
+
+Rules that hold:
+- Terms are immutable once funded; no instruction writes them again.
+- No partial settlement except an arbiter's `Split` (or the fixed 50/50 timeout
+  split), which moves the whole amount and conserves it exactly.
+- Once funded, the payer cannot reclaim before expiry; only `release` or a
+  closed review window / arbiter ruling moves money.
+- `Released`, `Refunded`, `Cancelled` and `Split` are terminal.
+- Once a claim exists, `expires_at` no longer applies: `refund` is refused from
+  `DeliveryClaimed` onward. The review window is what governs instead. The
+  exemption is keyed off the *state*, not off `claimed_at`, so it cannot be
+  reached by a field that happens to be set.
+
+### 13.3 Dispute reason and outcome codes
+
+`DisputeReason` serializes as the Borsh variant index 0..=4; the client's FRS-1
+reason codes are index + 1: 1 `not-as-described`, 2 `incomplete`, 3
+`not-received`, 4 `quality`, 5 `other`.
+
+`DisputeOutcome` is `Release`, `Refund`, or `Split { recipient_bps }` with
+`recipient_bps` in 1..=9999.
+
+### 13.4 The stored arbiter deadline
+
+`dispute` reads `Config.arbiter_timeout_secs` **once**, at dispute time, and
+stores `disputed_at + arbiter_timeout_secs` on the agreement as
+`arbiter_deadline`. `split_after_arbiter_timeout` reads that stored field, never
+the Config. Rationale: a later admin rotation of the window must not move a live
+dispute's deadline in either direction — shortening it would cut the arbiter's
+remaining time and lengthening it would strand the escrow. Both directions are
+asserted in the test suite.
+
+### 13.5 Fee table
+
+The fee is quoted in **whole tokens** (1 token = 1 dollar for an approved stable
+mint) and taken from the recipient's payout, so the payer always pays exactly the
+agreed amount. Bands are `[lower, upper)`, boundaries inclusive at the bottom:
+
+| Amount (whole tokens) | Fee |
+|---|---|
+| 20–49.99 | 1 |
+| 50–99.99 | 2 |
+| 100–249.99 | 4 |
+| 250–499.99 | 8 |
+| 500–999.99 | 15 |
+| 1,000–2,499.99 | 30 |
+| 2,500–4,999.99 | 60 |
+| 5,000–9,999.99 | 100 |
+| ≥ 10,000 | 1% of the amount |
+
+`fee_amount` is computed at creation from the amount and the mint's decimals and
+stored; settlement reads the stored field. On a split the fee follows the
+recipient's share (`fee_for_share`); a refund is never charged, because it
+returns the payer's own money. The minimum agreement is 20 whole tokens.
+
+### 13.6 Instruction set
+
+| Instruction | Transition | Signer |
+|---|---|---|
+| `create` | none -> `Pending` | recipient |
+| `fund` | `Pending` -> `Funded` | first funder (becomes payer) |
+| `cancel` | `Pending` -> `Cancelled` | recipient |
+| `release` | `Funded`/`DeliveryClaimed` -> `Released` | stored payer |
+| `refund` | `Funded` -> `Refunded` (after expiry) | anyone (crank) |
+| `claim_delivery` | `Funded` -> `DeliveryClaimed` | stored recipient |
+| `dispute` | `DeliveryClaimed` -> `Disputed` | stored payer |
+| `release_after_review` | `DeliveryClaimed` -> `Released` | anyone (crank) |
+| `resolve_dispute` | `Disputed` -> `Released`/`Refunded`/`Split` | Config arbiter |
+| `split_after_arbiter_timeout` | `Disputed` -> `Split` (fixed 50/50) | anyone (crank) |
+| `init_config` | creates `Config` | program's upgrade authority |
+| `set_config_roles` | rotates treasury/arbiter/window | Config admin |
+
+### 13.7 Evidence fields
+
+`evidence_hash` is the SHA-256 of a canonical JSON manifest (sorted keys, no
+whitespace) describing the delivered work; `evidence_ref` is a compact locator
+(`flint://e/<id>`, at most 96 bytes) resolved by the app. `/verify` reads the
+on-chain hash, fetches the manifest, recomputes its hash, and compares — and
+compares any dropped file's own SHA-256 against the manifest's items. All-zeros
+is reserved as the "no claim" sentinel and is refused as a claim hash, so an
+unclaimed agreement can never look like one with empty evidence.
+
+---
+
+## 14. Companion files (both gitignored — never commit either)
 
 - `FLINT_DESIGN.md` — design tokens and visual rules for the post-Phase-4
   restyle pass. Read it before touching any styling.

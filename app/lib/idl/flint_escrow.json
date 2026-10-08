@@ -66,9 +66,56 @@
       "args": []
     },
     {
+      "name": "claim_delivery",
+      "docs": [
+        "Recipient claims delivery with a manifest hash and a locator to check it",
+        "against (`Funded` -> `DeliveryClaimed`). One claim, and only before",
+        "expiry. After this the agreement's expiry has no further effect."
+      ],
+      "discriminator": [
+        3,
+        78,
+        164,
+        198,
+        14,
+        81,
+        18,
+        252
+      ],
+      "accounts": [
+        {
+          "name": "recipient",
+          "docs": [
+            "Must be the agreement's stored recipient (row 1)."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "agreement",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "evidence_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "evidence_ref",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "name": "create",
       "docs": [
-        "Recipient proposes an agreement (no state → `Pending`)."
+        "Recipient proposes an agreement (no state -> `Pending`)."
       ],
       "discriminator": [
         24,
@@ -118,6 +165,14 @@
               }
             ]
           }
+        },
+        {
+          "name": "config",
+          "docs": [
+            "The Config: the protocol minimum and the parameters every agreement",
+            "inherits. Present on `create` so an agreement cannot exist below the",
+            "minimum, or with a review window outside the allowed set."
+          ]
         },
         {
           "name": "asset",
@@ -252,6 +307,10 @@
           "type": "i64"
         },
         {
+          "name": "review_window_secs",
+          "type": "u32"
+        },
+        {
           "name": "condition_type",
           "type": {
             "defined": {
@@ -290,39 +349,51 @@
       ]
     },
     {
-      "name": "flag_dispute",
+      "name": "dispute",
       "docs": [
-        "Recipient sets or clears the advisory dispute flag (`Funded` →",
-        "`Funded`). `disputed` is explicit rather than a toggle, so repeats are",
-        "idempotent and the flag cannot flip by accident."
+        "Payer rejects a claim inside the review window (`DeliveryClaimed` ->",
+        "`Disputed`). Moves no money."
       ],
       "discriminator": [
-        150,
-        222,
-        78,
-        72,
-        117,
-        140,
-        2,
-        75
+        216,
+        92,
+        128,
+        146,
+        202,
+        85,
+        135,
+        73
       ],
       "accounts": [
         {
-          "name": "recipient",
+          "name": "payer",
           "docs": [
-            "The proposer: the flag is theirs to raise and clear (Section 4.2)."
+            "Must be the agreement's stored payer (row 1)."
           ],
+          "writable": true,
           "signer": true
         },
         {
           "name": "agreement",
           "writable": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Read at dispute time so the arbiter's deadline is frozen into the",
+            "agreement below. Must be provided because `split_after_arbiter_timeout`",
+            "must not re-read a timeout a later admin change could have moved."
+          ]
         }
       ],
       "args": [
         {
-          "name": "disputed",
-          "type": "bool"
+          "name": "reason",
+          "type": {
+            "defined": {
+              "name": "DisputeReason"
+            }
+          }
         }
       ]
     },
@@ -375,6 +446,100 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "init_config",
+      "docs": [
+        "Creates the global Config. Once per program, signed by the upgrade",
+        "authority, which becomes the admin."
+      ],
+      "discriminator": [
+        23,
+        235,
+        115,
+        232,
+        168,
+        96,
+        1,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "docs": [
+            "Must sign, and must be the program's current **upgrade authority** —",
+            "enforced below, not merely asserted by this comment.",
+            "",
+            "Binding config control to the upgrade authority means the same key can",
+            "already replace the program outright. An admin who is *not* the upgrade",
+            "authority could point the treasury at themselves while an uncompromised",
+            "authority watched; tying the two makes that an authority compromise",
+            "rather than a second, separate trust."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program_data",
+          "docs": [
+            "This program's upgradeable-loader account. Read to obtain the upgrade",
+            "authority address. Kept as an `UncheckedAccount` because Anchor has no",
+            "typed wrapper for it in the SDK this crate pins (see `read_upgrade_authority`),",
+            "so ownership, address and shape are all asserted by hand below.",
+            "upgradeable-loader-owned, is the ProgramData PDA of the verified program,",
+            "and holds a parseable ProgramData header."
+          ]
+        },
+        {
+          "name": "program",
+          "docs": [
+            "The program account itself. Verifying its address against `crate::ID`",
+            "stops a caller from passing some *other* upgradeable program whose",
+            "authority they control, and its owner must be the upgradeable loader."
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "treasury",
+          "type": "pubkey"
+        },
+        {
+          "name": "arbiter",
+          "type": "pubkey"
+        },
+        {
+          "name": "arbiter_timeout_secs",
+          "type": "u64"
+        },
+        {
+          "name": "min_agreement",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "refund",
@@ -451,6 +616,12 @@
           "signer": true
         },
         {
+          "name": "config",
+          "docs": [
+            "The Config, for the treasury the fee is paid to."
+          ]
+        },
+        {
           "name": "agreement",
           "writable": true
         },
@@ -467,6 +638,272 @@
           "writable": true
         },
         {
+          "name": "treasury_token_account",
+          "docs": [
+            "The treasury's token account for this asset, validated against the Config."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "release_after_review",
+      "docs": [
+        "Permissionless crank once the review window closes",
+        "(`DeliveryClaimed` -> `Released`): silence is a decision."
+      ],
+      "discriminator": [
+        166,
+        250,
+        3,
+        104,
+        87,
+        93,
+        133,
+        142
+      ],
+      "accounts": [
+        {
+          "name": "cranker",
+          "docs": [
+            "Anyone may crank this. Like `refund`'s cranker, this signer only pays the",
+            "fee and is never a beneficiary — the destination comes from stored state."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "The Config, for the treasury the fee is paid to."
+          ]
+        },
+        {
+          "name": "agreement",
+          "writable": true
+        },
+        {
+          "name": "escrow_token_account",
+          "writable": true
+        },
+        {
+          "name": "recipient_token_account",
+          "docs": [
+            "The stored recipient's token account, validated against stored state."
+          ],
+          "writable": true
+        },
+        {
+          "name": "treasury_token_account",
+          "docs": [
+            "The treasury's token account for this asset."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "resolve_dispute",
+      "docs": [
+        "Arbiter-only ruling on a dispute. Funds can only ever reach the stored",
+        "payer, the stored recipient, or the Config's treasury."
+      ],
+      "discriminator": [
+        231,
+        6,
+        202,
+        6,
+        96,
+        103,
+        12,
+        230
+      ],
+      "accounts": [
+        {
+          "name": "arbiter",
+          "docs": [
+            "Must equal the Config's stored arbiter (row 1)."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "agreement",
+          "writable": true
+        },
+        {
+          "name": "escrow_token_account",
+          "writable": true
+        },
+        {
+          "name": "payer_token_account",
+          "docs": [
+            "The stored payer's token account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "recipient_token_account",
+          "docs": [
+            "The stored recipient's token account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "treasury_token_account",
+          "docs": [
+            "The Config's treasury token account for this asset."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": {
+            "defined": {
+              "name": "DisputeOutcome"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "set_config_roles",
+      "docs": [
+        "Admin-only rotation of the treasury, arbiter and arbiter timeout."
+      ],
+      "discriminator": [
+        56,
+        96,
+        18,
+        191,
+        191,
+        27,
+        11,
+        94
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "docs": [
+            "Must be the Config's stored admin (row 1)."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "new_treasury",
+          "type": {
+            "option": "pubkey"
+          }
+        },
+        {
+          "name": "new_arbiter",
+          "type": {
+            "option": "pubkey"
+          }
+        },
+        {
+          "name": "new_arbiter_timeout_secs",
+          "type": {
+            "option": "u64"
+          }
+        }
+      ]
+    },
+    {
+      "name": "split_after_arbiter_timeout",
+      "docs": [
+        "Permissionless fixed 50/50 split once the arbiter's window has lapsed",
+        "(`Disputed` -> `Split`), so a lost arbiter can never strand the escrow."
+      ],
+      "discriminator": [
+        72,
+        186,
+        223,
+        92,
+        222,
+        34,
+        60,
+        156
+      ],
+      "accounts": [
+        {
+          "name": "cranker",
+          "docs": [
+            "Anyone may crank this once the arbiter's window has passed. Payer only in",
+            "the sense that the funds reach the stored payer too."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "agreement",
+          "writable": true
+        },
+        {
+          "name": "escrow_token_account",
+          "writable": true
+        },
+        {
+          "name": "payer_token_account",
+          "writable": true
+        },
+        {
+          "name": "recipient_token_account",
+          "writable": true
+        },
+        {
+          "name": "treasury_token_account",
+          "writable": true
+        },
+        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
@@ -475,6 +912,19 @@
     }
   ],
   "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
     {
       "name": "FlintAgreement",
       "discriminator": [
@@ -574,6 +1024,131 @@
       "code": 6016,
       "name": "FunderTokenAccountMismatch",
       "msg": "The funder's token account is not owned by the funding signer."
+    },
+    {
+      "code": 6017,
+      "name": "ClaimRecipientOnly",
+      "msg": "Only the agreement's recipient can claim delivery."
+    },
+    {
+      "code": 6018,
+      "name": "ClaimAfterExpiry",
+      "msg": "Delivery cannot be claimed after the agreement has expired."
+    },
+    {
+      "code": 6019,
+      "name": "AlreadyClaimed",
+      "msg": "This agreement already has a delivery claim; delivery may only be claimed once."
+    },
+    {
+      "code": 6020,
+      "name": "EvidenceHashEmpty",
+      "msg": "The evidence hash must not be all zeros."
+    },
+    {
+      "code": 6021,
+      "name": "EvidenceRefEmpty",
+      "msg": "The evidence reference must not be empty."
+    },
+    {
+      "code": 6022,
+      "name": "NotDeliveryClaimed",
+      "msg": "This agreement is not in delivery-claimed state, so there is no review window."
+    },
+    {
+      "code": 6023,
+      "name": "NotDisputed",
+      "msg": "This agreement is not disputed."
+    },
+    {
+      "code": 6024,
+      "name": "AlreadyDisputed",
+      "msg": "This agreement is already disputed; a dispute cannot be reopened."
+    },
+    {
+      "code": 6025,
+      "name": "ReviewWindowOpen",
+      "msg": "The review window is still open; the payer may still dispute or release."
+    },
+    {
+      "code": 6026,
+      "name": "ReviewWindowClosed",
+      "msg": "The review window has closed, so this claim can no longer be disputed."
+    },
+    {
+      "code": 6027,
+      "name": "FeeMathOverflow",
+      "msg": "A fee or split calculation overflowed, so it was refused rather than approximated."
+    },
+    {
+      "code": 6028,
+      "name": "SplitShareOutOfRange",
+      "msg": "A split share must be between 1 and 9999 basis points."
+    },
+    {
+      "code": 6029,
+      "name": "AlreadySettled",
+      "msg": "This agreement is already settled or finished."
+    },
+    {
+      "code": 6030,
+      "name": "BelowMinimumAmount",
+      "msg": "This amount is below the protocol minimum for an agreement."
+    },
+    {
+      "code": 6031,
+      "name": "ReviewWindowNotAllowed",
+      "msg": "The review window must be one of the allowed values: 6h, 12h, 24h or 48h."
+    },
+    {
+      "code": 6032,
+      "name": "ConfigAdminOnly",
+      "msg": "Only the Config admin can rotate the treasury or arbiter."
+    },
+    {
+      "code": 6033,
+      "name": "UpgradeAuthorityProgramMismatch",
+      "msg": "The program account must be this program."
+    },
+    {
+      "code": 6034,
+      "name": "UpgradeAuthorityDataMismatch",
+      "msg": "The program data account must be this program's ProgramData account."
+    },
+    {
+      "code": 6035,
+      "name": "NotUpgradeAuthority",
+      "msg": "Only the program's upgrade authority can initialize the Config."
+    },
+    {
+      "code": 6036,
+      "name": "UpgradeAuthorityRevoked",
+      "msg": "This program has no upgrade authority, so the Config cannot be initialized."
+    },
+    {
+      "code": 6037,
+      "name": "ProgramNotUpgradeable",
+      "msg": "This program is not upgradeable, so the Config cannot be initialized."
+    },
+    {
+      "code": 6038,
+      "name": "ArbiterOnly",
+      "msg": "Only the Config arbiter can resolve a dispute."
+    },
+    {
+      "code": 6039,
+      "name": "ArbiterTimeoutNotReached",
+      "msg": "The arbiter timeout has not passed, so this dispute cannot be split yet."
+    },
+    {
+      "code": 6040,
+      "name": "ArbiterTimeoutZero",
+      "msg": "The arbiter timeout must be greater than zero."
+    },
+    {
+      "code": 6041,
+      "name": "ZeroAddress",
+      "msg": "This address may not be the all-zero address."
     }
   ],
   "types": [
@@ -610,15 +1185,31 @@
     {
       "name": "AgreementStatus",
       "docs": [
-        "Lifecycle of an FRS-1 agreement (Section 4.2).",
+        "Lifecycle of an FRS-1 agreement.",
         "",
-        "- `Pending` → `Funded`    : first funder deposits the full `amount`; that",
-        "address becomes `payerAddress`, permanently.",
-        "- `Pending` → `Cancelled` : recipient only (no payer exists yet).",
-        "- `Funded`  → `Released`  : payer-signed confirmation only.",
-        "- `Funded`  → `Refunded`  : after `expiresAt`, permissionless crank; funds",
-        "always go to the stored payer, never the caller.",
-        "- `Released` / `Refunded` : terminal — nothing transitions out."
+        "The delivery branch is the reason this enum grew: the recipient no longer",
+        "merely \"confirms\" delivery, they *claim* it with evidence, and that claim",
+        "opens a review window in which the payer may dispute before money moves.",
+        "",
+        "- `Pending` → `Funded`      : first funder deposits the full `amount`; that",
+        "address becomes `payer_address`, permanently.",
+        "- `Pending` → `Cancelled`   : recipient only (no payer exists yet).",
+        "- `Funded` → `DeliveryClaimed` : recipient claims delivery with evidence,",
+        "before `expires_at`. One claim only.",
+        "- `Funded` → `Released`     : payer-signed release, from `Funded` or",
+        "`DeliveryClaimed`, at any time.",
+        "- `Funded` → `Refunded`     : after `expires_at`, permissionless crank, and",
+        "only while no claim exists.",
+        "- `DeliveryClaimed` → `Released` : `release_after_review`, permissionless once",
+        "`claimed_at + review_window_secs` has passed.",
+        "- `DeliveryClaimed` → `Disputed` : payer only, inside the review window.",
+        "- `Disputed` → `Released` / `Refunded` / `Split` : the arbiter's call, or the",
+        "50/50 timeout split once the arbiter is late.",
+        "- `Released` / `Refunded` / `Split` / `Cancelled` : terminal.",
+        "",
+        "The claim **detaches the agreement from `expires_at`**: once delivery is",
+        "claimed, expiry has no further effect, and `refund` refuses. That is why the",
+        "refund path checks the status rather than the clock alone."
       ],
       "type": {
         "kind": "enum",
@@ -630,6 +1221,9 @@
             "name": "Funded"
           },
           {
+            "name": "DeliveryClaimed"
+          },
+          {
             "name": "Released"
           },
           {
@@ -637,6 +1231,12 @@
           },
           {
             "name": "Cancelled"
+          },
+          {
+            "name": "Disputed"
+          },
+          {
+            "name": "Split"
           }
         ]
       }
@@ -692,6 +1292,138 @@
           },
           {
             "name": "OracleAttested"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Config",
+      "docs": [
+        "Global protocol configuration, one PDA per program.",
+        "",
+        "Holds the two roles that have to be the *same on every agreement* — the",
+        "treasury that receives fees, and the arbiter that resolves disputes — plus",
+        "the two parameters the protocol enforces on every agreement (minimum amount,",
+        "arbiter timeout). A per-agreement copy of any of these would let an",
+        "agreement choose its own arbiter, which is the one authority that must never",
+        "be negotiable.",
+        "",
+        "Set once by `init_config`, signed by the upgrade authority. The admin may then",
+        "rotate `treasury` and `arbiter`; it may not change the minimum, because the",
+        "minimum is what the fee table's floor assumes."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "docs": [
+              "May rotate `treasury` and `arbiter`. Initially the upgrade authority."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "Receives every fee, in the agreement's own asset."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "arbiter",
+            "docs": [
+              "The only signer `resolve_dispute` accepts."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "arbiter_timeout_secs",
+            "docs": [
+              "How long the arbiter has to resolve before `split_after_arbiter_timeout`",
+              "becomes available. Read from the Clock sysvar like every other deadline."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "min_agreement",
+            "docs": [
+              "Minimum agreement size in **whole tokens**; scaled by mint decimals when",
+              "compared against a base-unit amount."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Bump for the config PDA, so instructions can sign with it."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DisputeOutcome",
+      "docs": [
+        "How the arbiter resolved a dispute.",
+        "",
+        "`Split` carries the recipient's basis-point share; the payer receives the",
+        "remainder. A split share of 0 or 10000 would be a refund or a release wearing",
+        "a different name, so both are rejected."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Release"
+          },
+          {
+            "name": "Refund"
+          },
+          {
+            "name": "Split",
+            "fields": [
+              {
+                "name": "recipient_bps",
+                "type": "u16"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "DisputeReason",
+      "docs": [
+        "Why the payer disputed a delivery claim (`dispute.reason_code` 1..=5).",
+        "",
+        "A code, not free text: it has to be small enough to live on-chain, and a",
+        "closed set means the recipient and the arbiter see the same categories.",
+        "",
+        "Borsh serializes this as the variant index (0..=4); the FRS-1 reason codes",
+        "1..=5 are that index plus one, mapped by name in the client",
+        "(`DISPUTE_REASON_CODES` in `app/lib/frs1-types.ts`). Explicit discriminants",
+        "are deliberately *not* used here: Anchor's TypeScript coder writes enum",
+        "variants by index, so a `#[borsh(use_discriminant)]` enum would make the",
+        "program expect different bytes from what the client sends."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "NotAsDescribed"
+          },
+          {
+            "name": "Incomplete"
+          },
+          {
+            "name": "NotReceived"
+          },
+          {
+            "name": "Quality"
+          },
+          {
+            "name": "Other"
           }
         ]
       }
@@ -813,21 +1545,108 @@
             }
           },
           {
-            "name": "disputed_flag",
+            "name": "review_window_secs",
             "docs": [
-              "FRS-1 `disputedFlag` — advisory only: never moves custody, never blocks",
-              "refund after expiry (Section 4.2). Recipient sets and clears it."
+              "Review window the creator chose, in seconds. Always one of",
+              "[`ALLOWED_REVIEW_WINDOWS`], validated at creation. It starts at",
+              "`claimed_at`, not at `expires_at`: the window exists to review a delivery",
+              "claim, and there is no claim to review until one exists."
             ],
-            "type": "bool"
+            "type": "u32"
           },
           {
-            "name": "disputed_at",
+            "name": "claimed_at",
             "docs": [
-              "FRS-1 `disputedAt` — set and cleared alongside `disputed_flag`."
+              "When the recipient claimed delivery. `None` until `claim_delivery`.",
+              "",
+              "The whole delivery branch is derived from this field: the review window",
+              "closes at `claimed_at + review_window_secs`, and a dispute is only",
+              "accepted strictly before that."
             ],
             "type": {
               "option": "i64"
             }
+          },
+          {
+            "name": "evidence_hash",
+            "docs": [
+              "SHA-256 of the canonical evidence manifest, committed by the recipient at",
+              "claim time.",
+              "",
+              "The *manifest*, not the files: hashing bytes a third party cannot fetch",
+              "proves nothing after the fact, whereas a manifest hash can be recomputed",
+              "later from the stored manifest and compared, which is exactly what",
+              "`/verify` does. All zeros is reserved for \"no claim yet\" and is rejected",
+              "as a claim's hash, so a claim can never look like an empty claim."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "evidence_ref",
+            "docs": [
+              "Compact locator for the stored manifest, e.g. `flint://e/<id>`.",
+              "",
+              "Bounded by [`MAX_EVIDENCE_REF_LEN`] and required non-empty at claim time:",
+              "a hash with no way to reach the bytes it covers would be unverifiable."
+            ],
+            "type": "string"
+          },
+          {
+            "name": "disputed_at",
+            "docs": [
+              "When the payer disputed a claim. `None` unless the status is `Disputed`."
+            ],
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "arbiter_deadline",
+            "docs": [
+              "The arbiter's deadline for this dispute, stored at dispute time as",
+              "`disputed_at + config.arbiter_timeout_secs`.",
+              "",
+              "Stored rather than recomputed because a live config change must not move",
+              "the deadline of an in-flight dispute: shortening it would cut the",
+              "arbiter's window, lengthening it would strand the escrow longer.",
+              "`split_after_arbiter_timeout` reads this field, never the Config.",
+              "`None` unless the status is `Disputed`."
+            ],
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "dispute_reason",
+            "docs": [
+              "Which reason code the payer gave (1..=5). Meaningful only with `disputed_at`."
+            ],
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "DisputeReason"
+                }
+              }
+            }
+          },
+          {
+            "name": "fee_amount",
+            "docs": [
+              "The protocol fee for this agreement, in base units, **locked at creation**.",
+              "",
+              "Locked rather than recomputed at settlement so that the payer's total cost",
+              "is knowable from the agreement the moment it exists, and so a later change",
+              "to the fee table cannot retroactively alter what an in-flight agreement",
+              "owes. Deducted from the recipient's payout on every path that pays the",
+              "recipient (scaled to the recipient's share on a split); never charged on a",
+              "refund, which returns the payer's own money."
+            ],
+            "type": "u64"
           },
           {
             "name": "handle",

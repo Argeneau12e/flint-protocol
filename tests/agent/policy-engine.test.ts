@@ -43,8 +43,14 @@ function agreement(overrides: Partial<Frs1Agreement> = {}): Frs1Agreement {
     expiresAt: NOW + 900,
     status: "pending",
     condition: { type: "manual-confirmation", description: "Deliver the resource" },
-    disputedFlag: false,
+    reviewWindowSecs: 24 * 60 * 60,
+    claimedAt: null,
+    evidenceHash: "00".repeat(32),
+    evidenceRef: "",
     disputedAt: null,
+    arbiterDeadline: null,
+    disputeReason: null,
+    feeAmount: "0",
     ...overrides,
   };
 }

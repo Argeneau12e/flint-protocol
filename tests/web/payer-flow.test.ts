@@ -54,7 +54,7 @@ import { initMockWallets, type MockWalletSpec } from "./mock-wallet";
 
 const WALLET_NAME = "Flint Payer Wallet";
 /** The one agreement this suite pays for — created once, paid once, reloaded. */
-const AMOUNT_DISPLAY = "1.5";
+const AMOUNT_DISPLAY = "20.0";
 
 describe("web: payer flow — confirm dialog, signing stages, receipt (Section 5a)", function () {
   this.timeout(900_000);
@@ -478,3 +478,4 @@ describe("web: payer flow — confirm dialog, signing stages, receipt (Section 5
     );
   });
 });
+

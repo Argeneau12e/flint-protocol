@@ -3,6 +3,7 @@
   "extension": ["ts"],
   "spec": [
     "tests/agent/policy-engine.test.ts",
+    "tests/agent/fees.test.ts",
     "tests/agent/x402-flow.test.ts",
     "tests/human/human-flow.test.ts",
     "tests/agent/x402-throttle.test.ts",

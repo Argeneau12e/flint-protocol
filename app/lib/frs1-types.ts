@@ -48,16 +48,22 @@ export type UnixTimestamp = number;
 export type AgreementStatus =
   | "pending"
   | "funded"
+  | "deliveryClaimed"
   | "released"
   | "refunded"
-  | "cancelled";
+  | "cancelled"
+  | "disputed"
+  | "split";
 
-/** All five states, in lifecycle order. Handy for exhaustive UI rendering. */
+/** All eight states, in lifecycle order. Handy for exhaustive UI rendering. */
 export const FRS1_STATUSES: readonly AgreementStatus[] = [
   "pending",
   "funded",
+  "deliveryClaimed",
+  "disputed",
   "released",
   "refunded",
+  "split",
   "cancelled",
 ];
 
@@ -72,7 +78,57 @@ export const FRS1_STATUSES: readonly AgreementStatus[] = [
 export const FRS1_TERMINAL_STATUSES: readonly AgreementStatus[] = [
   "released",
   "refunded",
+  "split",
+  "cancelled",
 ];
+
+/**
+ * Why a payer disputed a delivery claim (`reason_code` 1..=5).
+ *
+ * Kebab-case for the wire and the UI, matching the FRS-1 string form; the
+ * on-chain enum stores the code, and `DISPUTE_REASON_CODES` is the mapping the
+ * app uses in both directions.
+ */
+export type DisputeReason =
+  | "notAsDescribed"
+  | "incomplete"
+  | "notReceived"
+  | "quality"
+  | "other";
+
+/** Reason code as stored on-chain: 1..=5. */
+export const DISPUTE_REASON_CODES: Readonly<Record<DisputeReason, number>> = {
+  notAsDescribed: 1,
+  incomplete: 2,
+  notReceived: 3,
+  quality: 4,
+  other: 5,
+};
+
+/**
+ * How the arbiter resolved a dispute.
+ *
+ * `split` carries the recipient's basis-point share; the payer receives the
+ * remainder, and the protocol fee is scaled to the recipient's share.
+ */
+export type DisputeOutcome =
+  | { kind: "release" }
+  | { kind: "refund" }
+  | { kind: "split"; recipientBps: number };
+
+/**
+ * The review windows a creator may choose, in seconds, and the default.
+ *
+ * The same closed set the program validates against: an agreement cannot carry
+ * a review term the UI never offered.
+ */
+export const ALLOWED_REVIEW_WINDOWS: readonly number[] = [
+  6 * 60 * 60,
+  12 * 60 * 60,
+  24 * 60 * 60,
+  48 * 60 * 60,
+];
+export const DEFAULT_REVIEW_WINDOW_SECS = 24 * 60 * 60;
 
 /**
  * FRS-1 `condition.type` values (Section 4.3).
@@ -143,11 +199,22 @@ export interface Frs1Agreement {
 
   condition: Frs1Condition;
 
-  /** Advisory only — never moves custody, never blocks refund (Section 4.2). */
-  disputedFlag: boolean;
-
-  /** `null` when not disputed; set/cleared alongside `disputedFlag`. */
+  /** One of 6h/12h/24h/48h; the review window the creator chose. */
+  reviewWindowSecs: number;
+  /** Set once by `claim_delivery`; `null` until claimed. */
+  claimedAt: UnixTimestamp | null;
+  /** Hex sha256 of the canonical manifest; all-zeros means "no claim". */
+  evidenceHash: string;
+  /** `flint://e/<id>`; empty until claimed. */
+  evidenceRef: string;
+  /** Set by `dispute`; `null` unless the status is `disputed`. */
   disputedAt: UnixTimestamp | null;
+  /** Frozen at dispute time; `split_after_arbiter_timeout` reads this field. */
+  arbiterDeadline: UnixTimestamp | null;
+  /** Set by `dispute`; meaningful only with `disputedAt`. */
+  disputeReason: DisputeReason | null;
+  /** Base units, locked at creation; scaled to share on a split. */
+  feeAmount: BaseUnits;
 
   /** Optional, display-only in v1. */
   handle?: string;
@@ -183,10 +250,16 @@ export const FRS1_FIELDS: ReadonlyArray<{
   { name: "escrowAddress", type: "TokenAccountAddress", note: "the escrow ATA, not the agreement PDA" },
   { name: "memo", type: "string", note: "display only" },
   { name: "expiresAt", type: "UnixTimestamp", note: "Clock sysvar only, never instruction-supplied" },
-  { name: "status", type: "AgreementStatus", note: "pending | funded | released | refunded | cancelled" },
+  { name: "status", type: "AgreementStatus", note: "pending | funded | deliveryClaimed | disputed | released | refunded | split | cancelled" },
   { name: "condition", type: "Frs1Condition", note: "v1 enforces manual-confirmation only" },
-  { name: "disputedFlag", type: "boolean", note: "advisory: never moves custody" },
-  { name: "disputedAt", type: "UnixTimestamp | null", note: "set/cleared with the flag" },
+  { name: "reviewWindowSecs", type: "number", note: "one of 6h/12h/24h/48h" },
+  { name: "claimedAt", type: "UnixTimestamp | null", note: "set once by claim_delivery" },
+  { name: "evidenceHash", type: "string", note: "hex sha256; all-zeros means no claim" },
+  { name: "evidenceRef", type: "string", note: "flint://e/<id>; empty until claimed" },
+  { name: "disputedAt", type: "UnixTimestamp | null", note: "set by dispute" },
+  { name: "arbiterDeadline", type: "UnixTimestamp | null", note: "frozen at dispute time" },
+  { name: "disputeReason", type: "DisputeReason | null", note: "set by dispute" },
+  { name: "feeAmount", type: "BaseUnits", note: "locked at creation" },
   { name: "handle", type: "string (optional)", note: "display-only in v1" },
   { name: "agentPolicy", type: "Frs1AgentPolicy (optional)", note: "enforced off-chain, deterministically" },
   { name: "receiptProof", type: "TransactionSignature (optional)", note: "settlement signature only" },
