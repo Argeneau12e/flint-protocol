@@ -109,101 +109,45 @@ fn require_upgrade_authority(
 #[cfg(test)]
 mod read_upgrade_authority_tests {
     use super::*;
-    use bpf_loader_upgradeable::id as upgradeable_loader_id;
-    use solana_program::program_pack::IsInitialized;
 
-    // Minimal ProgramData layout: [4] u32 discriminant (3=ProgramData), then u64 authorized address.
-    const PROGRAM_DATA_MINIMAL: &[u8; 12] = &[
-        0x03, 0x00, 0x00, 0x00, // discriminant = 3 (ProgramData)
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // authorized = pubkey(0)
-    ];
+    const AUTHORITY: [u8; 32] = [7u8; 32];
 
-    #[test]
-    fn wrong_discriminant_rejected() {
-        // Invalid discriminant -> should fail
-        let data = [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
-        let program_data = solana_program::account::Account::new(
-            &solana_program::system_program::id(),
-            false,
-            &solana_program::system_program::id(),
-            &data,
-        );
-        let program = solana_program::account::Account::new(
-            &solana_program::system_program::id(),
-            false,
-            &solana_program::system_program::id(),
-        );
-        let result =
-            require_upgrade_authority(&program, &program_data, solana_program::pubkey!(""));
-        assert!(result.is_err(), "wrong discriminant should be rejected");
-    }
-
-    #[test]
-    fn short_data_rejected() {
-        // Too short data -> should fail
-        let data = [0x03, 0x00, 0x00, 0x00]; // only 4 bytes, missing authorized address
-        let program_data = solana_program::account::Account::new(
-            &solana_program::system_program::id(),
-            false,
-            &solana_program::system_program::id(),
-            &data,
-        );
-        let program = solana_program::account::Account::new(
-            &solana_program::system_program::id(),
-            false,
-            &solana_program::system_program::id(),
-        );
-        let result =
-            require_upgrade_authority(&program, &program_data, solana_program::pubkey!(""));
-        assert!(result.is_err(), "short data should be rejected");
-    }
-
-    #[test]
-    fn none_authority_rejected() {
-        // Authorized address is default (pubkey(0)) -> NotUpgradeAuthority
-        let data = PROGRAM_DATA_MINIMAL;
-        let program_data = solana_program::account::Account::new(
-            &solana_program::system_program::id(),
-            false,
-            &solana_program::system_program::id(),
-            &data,
-        );
-        let program = solana_program::account::Account::new(
-            &solana_program::system_program::id(),
-            false,
-            &solana_program::system_program::id(),
-        );
-        let result =
-            require_upgrade_authority(&program, &program_data, solana_program::pubkey!(""));
-        assert!(result.is_err(), "None authority should be rejected");
-    }
-
-    #[test]
-    fn valid_some_accepted() {
-        // Valid authority -> accepted
-        let authorized_key = solana_program::pubkey!("11111111111111111111111111111111");
-        let mut data = PROGRAM_DATA_MINIMAL.to_vec();
-        // Replace the authorized address (bytes 4-39) with the real key
-        // ProgramData layout: [4] discriminant + [8] authorized addr + rest padding
-        // We'll just set bytes 4-11 (first 8 bytes of authorized)
-        for i in 0..8 {
-            data[4 + i] = authorized_key.to_bytes()[i];
+    fn header(discriminant: u32, authority: Option<[u8; 32]>) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(&discriminant.to_le_bytes());
+        data.extend_from_slice(&123u64.to_le_bytes());
+        match authority {
+            Some(key) => {
+                data.push(1);
+                data.extend_from_slice(&key);
+            }
+            None => {
+                data.push(0);
+                data.extend_from_slice(&[0u8; 32]);
+            }
         }
-        let program_data = solana_program::account::Account::new(
-            &solana_program::system_program::id(),
-            false,
-            &solana_program::system_program::id(),
-            &data,
-        );
-        let program = solana_program::account::Account::new(
-            &solana_program::system_program::id(),
-            false,
-            &solana_program::system_program::id(),
-        );
-        let result = require_upgrade_authority(&program, &program_data, authorized_key);
-        assert!(result.is_ok(), "valid Some authority should be accepted");
+        data
+    }
+
+    #[test]
+    fn rejects_wrong_discriminant() {
+        assert!(read_upgrade_authority(&header(2, Some(AUTHORITY))).is_err());
+    }
+
+    #[test]
+    fn rejects_short_data() {
+        assert!(read_upgrade_authority(&[3, 0, 0, 0]).is_err());
+    }
+
+    #[test]
+    fn rejects_none_authority() {
+        assert!(read_upgrade_authority(&header(3, None)).is_err());
+    }
+
+    #[test]
+    fn accepts_valid_some_authority() {
+        let key = read_upgrade_authority(&header(3, Some(AUTHORITY))).unwrap();
+        assert_eq!(key.to_bytes(), AUTHORITY);
     }
 }
 
