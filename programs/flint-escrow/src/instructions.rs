@@ -11,27 +11,35 @@
 //! - `disputed_flag` is never consulted by `release` or `refund` (Section 4.2).
 
 pub mod cancel;
+pub mod claim_delivery;
 pub mod create;
-pub mod flag_dispute;
+pub mod dispute;
 pub mod fund;
+pub mod init_config;
 pub mod refund;
 pub mod release;
+pub mod release_after_review;
+pub mod resolve_dispute;
+pub mod set_config_roles;
+pub mod split_after_arbiter_timeout;
 
-// Anchor's `#[program]` macro resolves each instruction's generated
-// `__client_accounts_*` types at the crate root, so the Accounts structs are
-// flattened up through this module and re-exported by `lib.rs`.
 pub use cancel::*;
+pub use claim_delivery::*;
 pub use create::*;
-pub use flag_dispute::*;
+pub use dispute::*;
 pub use fund::*;
+pub use init_config::*;
 pub use refund::*;
 pub use release::*;
+pub use release_after_review::*;
+pub use resolve_dispute::*;
+pub use set_config_roles::*;
+pub use split_after_arbiter_timeout::*;
 
 use crate::errors::FlintError;
-use crate::state::{FlintAgreement, AGREEMENT_SEED};
+use crate::state::{Config, FlintAgreement, AGREEMENT_SEED};
 use anchor_lang::prelude::*;
-use anchor_spl::token::TokenAccount;
-
+use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 /// Validates that `agreement` is the canonical FRS-1 PDA for the `id` and
 /// `recipient_address` **stored in it**, and returns the bump for signing.
 ///
@@ -92,7 +100,11 @@ pub fn check_owned_by(
     owner_error: FlintError,
 ) -> Result<()> {
     require_keys_eq!(token_account.owner, *expected_owner, owner_error);
-    require_keys_eq!(token_account.mint, *expected_mint, FlintError::AssetMismatch);
+    require_keys_eq!(
+        token_account.mint,
+        *expected_mint,
+        FlintError::AssetMismatch
+    );
     Ok(())
 }
 
@@ -103,5 +115,99 @@ pub fn check_owned_by(
 /// failure at exit. Fail loudly instead.
 pub fn check_field_len(len: usize, max: usize) -> Result<()> {
     require!(len <= max, FlintError::FieldTooLong);
+    Ok(())
+}
+
+/// The end of the review window for a claimed agreement, from the Clock sysvar.
+///
+/// `claimed_at + review_window_secs`, with the addition checked: a window that
+/// overflowed would wrap into the past and make the window permanently closed,
+/// which is exactly the failure this guards against.
+pub fn review_window_end(agreement: &FlintAgreement) -> Result<i64> {
+    let claimed_at = agreement.claimed_at.ok_or(FlintError::NotDeliveryClaimed)?;
+    Ok(claimed_at
+        .checked_add(agreement.review_window_secs as i64)
+        .ok_or(FlintError::FeeMathOverflow)?)
+}
+
+/// The treasury token account for `asset`, checked against the Config.
+///
+/// The destination is derived from the *Config's* stored treasury, never from an
+/// instruction argument — a caller-supplied treasury would be a third party
+/// collecting the protocol's fee.
+pub fn check_treasury_account(
+    config: &Account<Config>,
+    treasury_token_account: &Account<'_, TokenAccount>,
+) -> Result<()> {
+    require_keys_eq!(
+        treasury_token_account.owner,
+        config.treasury,
+        FlintError::TokenAccountOwnerMismatch
+    );
+    Ok(())
+}
+
+/// Pays the recipient and the treasury from escrow, in one place.
+///
+/// Every settlement path that pays the recipient goes through this helper, which
+/// is what makes "the fee is always deducted from the recipient's payout" a
+/// structural property rather than a rule each instruction has to remember: an
+/// instruction that forgets the fee is not possible here, because the recipient's
+/// figure and the fee are separate arguments and the sum is what leaves escrow.
+///
+/// `recipient_amount` and `fee_amount` are transferred separately rather than as
+/// one total, so the escrow balance check is enforced by the token program on
+/// both legs and the fee cannot be silently under-paid.
+#[allow(clippy::too_many_arguments)]
+pub fn pay_recipient<'info>(
+    agreement: &Account<'info, FlintAgreement>,
+    bump: u8,
+    escrow_token_account: &Account<'info, TokenAccount>,
+    recipient_token_account: &Account<'info, TokenAccount>,
+    treasury_token_account: &Account<'info, TokenAccount>,
+    token_program: &Program<'info, Token>,
+    recipient_amount: u64,
+    fee_amount: u64,
+) -> Result<()> {
+    let id_bytes = agreement.id;
+    let recipient_bytes = agreement.recipient_address.to_bytes();
+    let bump_arr = [bump];
+    let seeds: &[&[u8]] = &[
+        AGREEMENT_SEED,
+        recipient_bytes.as_ref(),
+        id_bytes.as_ref(),
+        &bump_arr,
+    ];
+
+    if recipient_amount > 0 {
+        token::transfer(
+            CpiContext::new_with_signer(
+                token_program.key(),
+                Transfer {
+                    from: escrow_token_account.to_account_info(),
+                    to: recipient_token_account.to_account_info(),
+                    authority: agreement.to_account_info(),
+                },
+                &[seeds],
+            ),
+            recipient_amount,
+        )?;
+    }
+
+    if fee_amount > 0 {
+        token::transfer(
+            CpiContext::new_with_signer(
+                token_program.key(),
+                Transfer {
+                    from: escrow_token_account.to_account_info(),
+                    to: treasury_token_account.to_account_info(),
+                    authority: agreement.to_account_info(),
+                },
+                &[seeds],
+            ),
+            fee_amount,
+        )?;
+    }
+
     Ok(())
 }

@@ -52,6 +52,14 @@ pub fn handle_refund(ctx: Context<Refund>) -> Result<()> {
             FlintError::NotYetExpired
         );
 
+        // A delivery claim **detaches the agreement from its expiry**: once the
+        // recipient has claimed delivery with evidence, the money is owed to
+        // somebody and the deadline that would return it to the payer no longer
+        // applies. Refunding here would let a cranker take payment for work the
+        // recipient has already proved was delivered — so the status check above
+        // is what actually guards this, and the clock alone is not enough.
+        require!(agreement.claimed_at.is_none(), FlintError::AlreadyClaimed);
+
         check_escrow_account(agreement, &ctx.accounts.escrow_token_account)?;
         // The destination is the *stored* payer, so whoever cranks this cannot
         // redirect the refund to themselves (rows 1 and 2).
@@ -62,9 +70,10 @@ pub fn handle_refund(ctx: Context<Refund>) -> Result<()> {
             FlintError::TokenAccountOwnerMismatch,
         )?;
 
-        // `disputed_flag` is deliberately never consulted: a flag that could
-        // block refund after expiry would strand the funds past their deadline,
-        // which Section 4.2 rules out.
+        // A refund returns the payer's own money, so it is never charged a fee:
+        // there is no payout to the recipient to cover, and taking one would mean
+        // a payer lost part of their own escrow on an agreement nobody delivered.
+        // The whole amount goes back.
 
         (agreement.amount, bump)
     };

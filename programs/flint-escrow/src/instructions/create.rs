@@ -29,6 +29,11 @@ pub struct Create<'info> {
     )]
     pub agreement: Account<'info, FlintAgreement>,
 
+    /// The Config: the protocol minimum and the parameters every agreement
+    /// inherits. Present on `create` so an agreement cannot exist below the
+    /// minimum, or with a review window outside the allowed set.
+    pub config: Account<'info, Config>,
+
     /// The SPL mint the agreement is denominated in (FRS-1 `asset`).
     pub asset: Account<'info, Mint>,
 
@@ -53,6 +58,7 @@ pub fn handle_create(
     id: [u8; 16],
     amount: u64,
     expires_at: i64,
+    review_window_secs: u32,
     condition_type: ConditionType,
     condition_description: String,
     title: String,
@@ -68,6 +74,26 @@ pub fn handle_create(
     // like a paid agreement. Refuse it outright.
     require!(amount > 0, FlintError::ZeroAmount);
 
+    // The protocol minimum, in whole tokens scaled by the mint's own decimals.
+    // Below this an agreement could not carry a fee covering its own payout, so
+    // it would be a transfer the protocol subsidises.
+    let scale = crate::fees::scale_up(ctx.accounts.asset.decimals)?;
+    let minimum = ctx
+        .accounts
+        .config
+        .min_agreement
+        .checked_mul(scale)
+        .ok_or(FlintError::FeeMathOverflow)?;
+    require!(amount >= minimum, FlintError::BelowMinimumAmount);
+
+    // A closed set of review windows, so every agreement's review terms are one a
+    // person could have chosen from the UI. An arbitrary number would make two
+    // agreements' terms incomparable.
+    require!(
+        ALLOWED_REVIEW_WINDOWS.contains(&review_window_secs),
+        FlintError::ReviewWindowNotAllowed
+    );
+
     // Section 4.3: v1 enforces exactly one condition type. Rejecting the
     // unimplemented one here — not only at release — follows Section 4.6's own
     // reasoning: never allow an agreement to exist that can never be released.
@@ -79,10 +105,7 @@ pub fn handle_create(
     // Section 4.6 field bounds.
     check_field_len(title.len(), MAX_TITLE_LEN)?;
     check_field_len(memo.len(), MAX_MEMO_LEN)?;
-    check_field_len(
-        condition_description.len(),
-        MAX_CONDITION_DESCRIPTION_LEN,
-    )?;
+    check_field_len(condition_description.len(), MAX_CONDITION_DESCRIPTION_LEN)?;
     if let Some(handle) = &handle {
         check_field_len(handle.len(), MAX_HANDLE_LEN)?;
     }
@@ -106,8 +129,21 @@ pub fn handle_create(
         condition_type,
         description: condition_description,
     };
-    agreement.disputed_flag = false;
+    // The delivery branch starts empty: no claim, no evidence, no dispute. All
+    // zeros is the "no claim" sentinel that `claim_delivery` refuses, so an
+    // unclaimed agreement can never be mistaken for one whose evidence is empty.
+    agreement.review_window_secs = review_window_secs;
+    agreement.claimed_at = None;
+    agreement.evidence_hash = [0u8; 32];
+    agreement.evidence_ref = String::new();
     agreement.disputed_at = None;
+    agreement.arbiter_deadline = None;
+    agreement.dispute_reason = None;
+    // The fee is computed once, here, from the amount and the mint's own
+    // decimals — and stored. Every later settlement reads this field rather than
+    // recomputing, so the payer's cost cannot change underneath an agreement that
+    // is already live.
+    agreement.fee_amount = crate::fees::scaled_fee_base_units(amount, ctx.accounts.asset.decimals)?;
     agreement.handle = handle;
     agreement.agent_policy = agent_policy;
     // `receipt_proof` stays None for the whole life of the agreement: a program
