@@ -2,6 +2,8 @@
   "require": ["ts-node/register", "./tests/agent/load-env.ts"],
   "extension": ["ts"],
   "spec": [
+    "tests/agent/config-decode.test.ts",
+    "tests/agent/evidence.test.ts",
     "tests/agent/policy-engine.test.ts",
     "tests/agent/fees.test.ts",
     "tests/agent/x402-flow.test.ts",

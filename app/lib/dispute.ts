@@ -1,123 +1,116 @@
-/** Dispute client utilities (Phase 5a)
- * 
- * Maps reason codes through DISPUTE_REASON_CODES,
- * builds transaction parameters, and handles the
- * arbiter queue logic.
+/** Dispute client utilities (Phase 5a / Task 2)
+ *
+ * Maps reason codes through DISPUTE_REASON_CODES, decides who may dispute, and
+ * answers the arbiter-queue question: is the connected wallet the Config's
+ * arbiter, and does it have anything to rule on? The arbiter identity is read
+ * from the on-chain Config, never hardcoded, and resolution is signed by the
+ * arbiter's own wallet — there is no server-held key.
  */
 
 import { PublicKey, type Connection } from "@solana/web3.js";
-import { Frs1Agreement, DisputeReason, DISPUTE_REASON_CODES } from "./frs1-types";
+import { DisputeReason, DISPUTE_REASON_CODES } from "./frs1-types";
+import type { AgreementStatus } from "./frs1-types";
+import { readConfig } from "./flint-program";
 
-/** Map a human-readable reason code to the on-chain discriminant. */
-export function reasonCodeToDiscriminal(reason: DisputeReason): number {
+/** Map a human-readable reason code to the on-chain discriminant (1..=5). */
+export function reasonCodeToDiscriminant(reason: DisputeReason): number {
   return DISPUTE_REASON_CODES[reason];
 }
 
-/** Map the on-chain discriminant to a human-readable reason. */
-export function discriminalToReasonCode(code: number): DisputeReason | undefined {
-  return Object.entries(DISPUTE_REASON_CODES).find(
-    ([, c]) => c === code,
-  )?.[0] as DisputeReason | undefined;
+/** Map the on-chain discriminant (1..=5) to a human-readable reason. */
+export function discriminantToReasonCode(code: number): DisputeReason | undefined {
+  return (Object.keys(DISPUTE_REASON_CODES) as DisputeReason[]).find(
+    (reason) => DISPUTE_REASON_CODES[reason] === code,
+  );
 }
 
-/** Build the `dispute` transaction instructions parameters.
- * 
- * The caller must ensure the agreement is not already disputed
- * and is in a state that allows disputing (typically "funded" or "deliveryClaimed").
+/** Build the `dispute` transaction parameters.
+ *
+ * The caller must ensure the agreement is disputable: it is in
+ * `deliveryClaimed` (a claim inside the review window) and the signer is the
+ * stored payer. `program.methods.dispute` takes the Anchor enum variant
+ * `{ [reason]: {} }`; the on-chain code is the variant index, which
+ * `DISPUTE_REASON_CODES` documents as 1..=5.
  */
 export interface DisputeParams {
-  /** Human-readable reason (mapped to on-chain discriminant). */
+  /** Human-readable reason (mapped to the on-chain discriminant). */
   reason: DisputeReason;
-  /** Optional meta object for the reason (e.g., { notReceived: { item: string } }). */
-  meta?: Record<string, unknown>;
+}
+
+/** The Anchor enum object `dispute` expects for a reason. */
+export function disputeReasonArg(reason: DisputeReason): { [k: string]: Record<string, never> } {
+  return { [reason]: {} };
 }
 
 /** Check whether a connected wallet can dispute this agreement.
- * 
- * - The agreement must be in a non-terminal state (not released/refunded/cancelled).
- * - The wallet must be the payer or the recipient (depending on flow).
- * - The arbiter window must not have closed (or the caller must be the arbiter).
+ *
+ * Only the stored payer may dispute a delivery claim (the program enforces this
+ * too — `dispute` is payer-signed). The arbiter resolves; it does not dispute.
+ * A terminal agreement is never disputable.
  */
 export function canDispute(
-  agreement: Frs1Agreement,
+  agreement: { status: AgreementStatus; payerAddress: string | null; recipientAddress: string },
   connectedAddress: string | null,
-  isArbiter: boolean,
 ): { ok: boolean; reason?: string } {
-  const terminalStates = ["released", "refunded", "cancelled"];
-  if (terminalStates.includes(agreement.status)) {
+  const terminal: AgreementStatus[] = ["released", "refunded", "cancelled", "split"];
+  if (terminal.includes(agreement.status)) {
     return { ok: false, reason: "agreement_terminal" };
   }
-
+  if (agreement.status !== "deliveryClaimed") {
+    return { ok: false, reason: "no_claim_to_dispute" };
+  }
   if (!connectedAddress) {
     return { ok: false, reason: "no_wallet_connected" };
   }
-
-  // Payer can always dispute their own agreements
-  // Recipient can dispute under certain conditions
-  // Arbiter can always resolve
-  if (isArbiter) {
-    return { ok: true };
+  if (agreement.payerAddress === null || connectedAddress !== agreement.payerAddress) {
+    return { ok: false, reason: "payer_only" };
   }
-
-  const pubkey = new PublicKey(connectedAddress);
-  const payer = agreement.payerAddress ? new PublicKey(agreement.payerAddress) : null;
-  const recipient = new PublicKey(agreement.recipientAddress);
-
-  if (payer !== null && pubkey.equals(payer)) return { ok: true };
-  if (pubkey.equals(recipient)) return { ok: true };
-
-  return { ok: false, reason: "not_payer_or_recipient" };
+  return { ok: true };
 }
 
-/** Arbiter queue position (simple in-memory / Redis‑backed in prod).
- * 
- * Returns whether the caller is the configured arbiter and their queue position.
- */
 export interface ArbiterStatus {
+  /** True when the connected wallet is the Config's stored arbiter. */
   isArbiter: boolean;
-  queuePosition: number | null;
-  /** True when the arbiter's review window has closed. */
-  reviewWindowClosed: boolean;
+  /** The Config's arbiter address, or null when Config could not be read. */
+  arbiter: string | null;
+  /**
+   * Agreements in `Disputed` state that the arbiter may rule on. Populated by
+   * the caller (which enumerates them); this helper only decides *whether* the
+   * connected wallet is the arbiter, so the queue is never shown to anyone else.
+   */
+  queue: DisputedSummary[];
 }
 
-/** Read the Config account to determine the arbiter and review window.
- * 
- * In a full deployment this would read from the on-chain Config PDA.
- * Here we provide the structure; the actual RPC call depends on the program.
+/** One disputed agreement in the arbiter's queue. */
+export interface DisputedSummary {
+  address: string;
+  /** Unix seconds: the arbiter must rule before this, or anyone may split. */
+  arbiterDeadline: number;
+}
+
+/**
+ * Read the Config and decide whether `connectedAddress` is the arbiter.
+ *
+ * The queue itself is the caller's to supply (enumerating disputed agreements
+ * requires an indexer this build does not have); this function gates it — the
+ * queue is returned non-empty only when the connected wallet *is* the Config's
+ * arbiter, so a non-arbiter never sees another party's disputes. No server-held
+ * key: the arbiter rules by signing `resolve_dispute` with its own wallet.
  */
 export async function getArbiterStatus(
   connection: Connection,
-  configPda: PublicKey,
+  programId: PublicKey,
   connectedAddress: string | null,
+  disputed: DisputedSummary[] = [],
 ): Promise<ArbiterStatus> {
-  void connection;
-  void configPda;
-  // No on-chain Config read yet: this helper is unwired (no callers) and the
-  // Config shape lives in the program. Report non-arbiter until wired.
-  const isArbiter = false;
-
-  const reviewWindowClosed = isArbiter
-    ? false // arbiter has not closed the window yet (simplified)
-    : true; // non‑arbiter sees window as closed
-
-  // Simple queue: position based on connected address hash (deterministic for testing)
-  let queuePosition: number | null = null;
-  if (connectedAddress) {
-    const hash = Buffer.from(connectedAddress, "utf8");
-    queuePosition = hash[0] % 5; // 0‑4 placeholder
-  }
-
-  return {
-    isArbiter,
-    queuePosition,
-    reviewWindowClosed,
-  };
+  const config = await readConfig(connection, programId).catch(() => null);
+  const arbiter = config ? config.arbiter.toBase58() : null;
+  const isArbiter =
+    arbiter !== null && connectedAddress !== null && connectedAddress === arbiter;
+  return { isArbiter, arbiter, queue: isArbiter ? disputed : [] };
 }
 
-/** Resolve a dispute on-chain via the program.
- * 
- * This is a wrapper that builds the transaction; the caller signs and sends.
- */
+/** Parameters for the arbiter's `resolve_dispute` ruling. */
 export interface ResolveDisputeParams {
   agreement: PublicKey;
   arbiter: PublicKey;

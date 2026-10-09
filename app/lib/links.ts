@@ -73,3 +73,59 @@ export function parseAgreementRef(
   if (!id || !recipient) return null;
   return { id, recipient };
 }
+
+/**
+ * External evidence links (task item 6).
+ *
+ * An evidence link is a URL a third party pasted in, so it is untrusted input.
+ * Two rules keep it safe to show:
+ *
+ *   1. Only `http:` and `https:` are accepted. A `javascript:`, `data:`,
+ *      `file:` or `vbscript:` "URL" is not a destination — it is a payload, and
+ *      rendering it as a link would run it in this origin. `parseExternalLink`
+ *      refuses anything else, so the UI can fall back to plain text.
+ *   2. The host is shown for display, never the full URL as the link text, and
+ *      the anchor is always rendered with `rel="noopener noreferrer"` and only
+ *      after a confirm step. `noopener` severs `window.opener` (the
+ *      reverse-tabnab surface); `noreferrer` also withholds the referrer.
+ *
+ * `externalLinkRel` and `externalLinkTarget` are the exact attributes the UI
+ * must use, exported so no call site can forget them.
+ */
+export function externalLinkRel(): string {
+  return "noopener noreferrer";
+}
+
+export function externalLinkTarget(): "_blank" {
+  return "_blank";
+}
+
+export interface ExternalLink {
+  /** The validated absolute URL, safe to use as an `href`. */
+  href: string;
+  /** The host for display, e.g. `example.com`. */
+  host: string;
+}
+
+/**
+ * Parse and validate an external link. Returns `null` for anything that is not
+ * an absolute http(s) URL, so a caller can refuse to render it as a link at all
+ * rather than render a broken or dangerous one.
+ */
+export function parseExternalLink(raw: string): ExternalLink | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  if (url.hostname === "") return null;
+  return { href: url.toString(), host: url.hostname };
+}
+
+/** The host for display, or `null` when `raw` is not a valid external link. */
+export function externalLinkHost(raw: string): string | null {
+  return parseExternalLink(raw)?.host ?? null;
+}
+

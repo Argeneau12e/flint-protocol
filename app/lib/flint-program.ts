@@ -31,7 +31,7 @@ import {
   TransactionInstruction,
 } from "@solana/web3.js";
 import idl from "./idl/flint_escrow.json";
-import { DEFAULT_REVIEW_WINDOW_SECS } from "./frs1-types";
+import { DEFAULT_REVIEW_WINDOW_SECS, type DisputeReason } from "./frs1-types";
 
 /** PDA seed for an agreement account: `[b"agreement", recipient, id]`. */
 export const AGREEMENT_SEED = Buffer.from("agreement");
@@ -136,28 +136,72 @@ export function configPda(programId: PublicKey): [PublicKey, number] {
 }
 
 /**
+ * The key `Config` has in Anchor's account coder.
+ *
+ * Same rule as `AGREEMENT_CODER_KEY` below: the coder is built from the IDL
+ * *after* Anchor's camelCase conversion, so the account is keyed `config`, not
+ * `Config`. The on-chain discriminator is still `sha256("account:Config")`.
+ */
+const CONFIG_CODER_KEY = "config";
+
+/** The on-chain Config account, decoded through the program's own coder. */
+export interface RawConfig {
+  admin: PublicKey;
+  treasury: PublicKey;
+  arbiter: PublicKey;
+  arbiterTimeoutSecs: BN;
+  minAgreement: BN;
+  bump: number;
+}
+
+/**
+ * Reads and decodes the global Config PDA, or `null` when it does not exist.
+ *
+ * Decoded through the program's own Borsh coder rather than by hand-slicing raw
+ * bytes. The manual approach is exactly where a silent bug lives: the account
+ * begins with an 8-byte Anchor discriminator, so `treasury` sits at bytes
+ * 40..72 — *after* `admin` (8..40) — not at 32..64. Reading 32..64 would return
+ * the last 24 bytes of `admin` glued to the first 8 of `treasury`, and every
+ * fee would be routed to a phantom wallet. The coder owns the layout, so a
+ * field added to `Config` in `state.rs` is picked up here instead of quietly
+ * shifting every offset after it.
+ *
+ * A missing Config is a fact (not an exception) so a caller can distinguish
+ * "not initialised yet" from a genuine decode failure.
+ */
+export async function readConfig(
+  connection: Connection,
+  programId: PublicKey,
+): Promise<RawConfig | null> {
+  const [config] = configPda(programId);
+  const info = await connection.getAccountInfo(config, "confirmed");
+  if (info === null) return null;
+  const program = getProgram(connection, programId);
+  return program.coder.accounts.decode(
+    CONFIG_CODER_KEY,
+    Buffer.from(info.data),
+  ) as RawConfig;
+}
+
+/**
  * Reads the treasury seat of the global Config PDA.
  *
- * Layout is the Borsh serialization of the Rust `Config` account:
- *   admin    Pubkey  (0..32)
- *   treasury Pubkey  (32..64)
- *   arbiter  Pubkey  (64..96)
- *   arbiter_timeout_secs u64 (96..104)
- *   min_agreement    u64 (104..112)
- *   bump             u8  (112..113)
+ * Thin wrapper over {@link readConfig}: the release/fund builders only need the
+ * treasury wallet, and derive its ATA from it. Kept as its own function so the
+ * callers read plainly and the decode path stays in one place.
  */
 async function readConfigTreasury(
   connection: Connection,
   programId: PublicKey,
 ): Promise<PublicKey> {
-  const [config] = configPda(programId);
-  const info = await connection.getAccountInfo(config, "confirmed");
-  if (info === null || info.data.length < 113) {
+  const config = await readConfig(connection, programId);
+  if (config === null) {
+    const [pda] = configPda(programId);
     throw new Error(
-      `Flint config PDA ${config.toBase58()} is missing or malformed — is the program deployed and initialized?`,
+      `Flint config PDA ${pda.toBase58()} is missing or malformed — is the program deployed and initialized?`,
     );
   }
-  return new PublicKey(info.data.subarray(32, 64));
+  return config.treasury;
 }
 
 
@@ -582,6 +626,36 @@ export interface ReleaseAccounts {
   treasuryTokenAccount?: PublicKey;
 }
 
+/**
+ * Derives the Config treasury's ATA for `asset` and the idempotent create
+ * instruction that brings it into existence if absent.
+ *
+ * Shared by every settlement builder (release, release-after-review,
+ * resolve-dispute, split-after-arbiter-timeout) so a settlement can never fail
+ * merely because the treasury has not yet received this asset. The Associated
+ * Token Program's `CreateIdempotent` requires only the *funding* account to
+ * sign — the owner (the treasury) does not — so the transaction's fee payer can
+ * pay the rent. It is a no-op when the account already exists.
+ */
+async function treasuryAtaForSettlement(
+  connection: Connection,
+  programId: PublicKey,
+  feePayer: PublicKey,
+  asset: PublicKey,
+  override?: PublicKey,
+): Promise<{ treasuryTokenAccount: PublicKey; ensureInstruction: TransactionInstruction }> {
+  const treasury = await readConfigTreasury(connection, programId);
+  const treasuryTokenAccount =
+    override ?? getAssociatedTokenAddressSync(asset, treasury, true);
+  const ensureInstruction = createAssociatedTokenAccountIdempotentInstruction(
+    feePayer,
+    treasuryTokenAccount,
+    treasury,
+    asset,
+  );
+  return { treasuryTokenAccount, ensureInstruction };
+}
+
 /** `release`, built for the stored payer to sign. */
 export async function buildReleaseTransaction(
   connection: Connection,
@@ -593,19 +667,17 @@ export async function buildReleaseTransaction(
   const config = accounts.config ?? configPda(programId)[0];
 
   // The treasury ATA is the *treasury's* and is validated against the stored
-  // Config on-chain (row 5): it may not be created inline, so it is required
-  // (and derived here when the caller did not supply it explicitly).
-  let treasuryTokenAccount: PublicKey;
-  if (accounts.treasuryTokenAccount !== undefined) {
-    treasuryTokenAccount = accounts.treasuryTokenAccount;
-  } else {
-    const treasury = await readConfigTreasury(connection, programId);
-    treasuryTokenAccount = getAssociatedTokenAddressSync(
+  // Config on-chain (row 5). It is derived from the Config's treasury wallet,
+  // never from an argument, and created idempotently by the payer when absent so
+  // a release never fails on a missing treasury account.
+  const { treasuryTokenAccount, ensureInstruction: ensureTreasuryAta } =
+    await treasuryAtaForSettlement(
+      connection,
+      programId,
+      payer,
       accounts.asset,
-      treasury,
-      true,
+      accounts.treasuryTokenAccount,
     );
-  }
 
   const escrowTokenAccount =
     accounts.escrowTokenAccount ?? escrowAta(accounts.asset, accounts.agreement);
@@ -640,7 +712,7 @@ export async function buildReleaseTransaction(
 
   return withBlockhash(
     connection,
-    new Transaction().add(instruction),
+    new Transaction().add(ensureTreasuryAta, instruction),
     payer,
   );
 }
@@ -649,14 +721,18 @@ export async function buildReleaseTransaction(
 export interface ClaimDeliveryAccounts {
   agreement: PublicKey;
   recipient: PublicKey;
-  asset: PublicKey;
-  /** The escrow token account (ATA for the agreement, or provided explicitly). */
-  escrowTokenAccount?: PublicKey;
-  recipientTokenAccount?: PublicKey;
-  tokenProgram: PublicKey;
 }
 
-/** Build a `claimDelivery` transaction — recipient claims delivery with evidence. */
+/**
+ * Build a `claimDelivery` transaction — the recipient claims delivery with
+ * evidence.
+ *
+ * The instruction struct (claim_delivery.rs) has exactly two accounts —
+ * `recipient` (signer) and `agreement` — and moves no money, so no token
+ * accounts are passed. `evidenceHash` is the 32-byte SHA-256 of the canonical
+ * manifest and `evidenceRef` is the `flint://e/<id>` locator; both are committed
+ * on chain and checked non-empty / non-zero by the program.
+ */
 export async function buildClaimDeliveryTransaction(
   connection: Connection,
   programId: PublicKey,
@@ -665,19 +741,12 @@ export async function buildClaimDeliveryTransaction(
   evidenceRef: string,
 ): Promise<Transaction> {
   const program = getProgram(connection, programId);
-  const escrowTokenAccount = accounts.escrowTokenAccount ?? escrowAta(accounts.asset, accounts.agreement);
-  const recipientTokenAccount = accounts.recipientTokenAccount ?? getAssociatedTokenAddressSync(accounts.asset, accounts.recipient, true);
-
-  await requireExistingAta(connection, accounts.recipient, recipientTokenAccount, accounts.asset);
 
   const instruction = await program.methods
     .claimDelivery(new Uint8Array(evidenceHash), evidenceRef)
     .accountsPartial({
-      agreement: accounts.agreement,
       recipient: accounts.recipient,
-      escrowTokenAccount,
-      recipientTokenAccount,
-      tokenProgram: accounts.tokenProgram,
+      agreement: accounts.agreement,
     })
     .instruction();
 
@@ -689,35 +758,72 @@ export interface ReleaseAfterReviewAccounts {
   agreement: PublicKey;
   cranker: PublicKey;
   asset: PublicKey;
+  /** The stored recipient, whose ATA receives the payout. */
+  recipient: PublicKey;
+  config?: PublicKey;
   escrowTokenAccount?: PublicKey;
-  payerTokenAccount?: PublicKey;
-  tokenProgram: PublicKey;
+  recipientTokenAccount?: PublicKey;
+  treasuryTokenAccount?: PublicKey;
 }
 
-/** Build a `releaseAfterReview` transaction — crank after the review window closes. */
+/**
+ * Build a `releaseAfterReview` transaction — permissionless crank once the
+ * review window closes (`DeliveryClaimed` → `Released`).
+ *
+ * Account list matches release_after_review.rs / the IDL: cranker (signer),
+ * config, agreement, escrow, recipient and treasury token accounts, token
+ * program. The cranker only pays the fee; the payout always goes to the stored
+ * recipient. The treasury ATA is created idempotently by the cranker when
+ * absent; the recipient ATA must already exist (the recipient is not a signer),
+ * and its absence is reported as the actionable `MissingDestinationAtaError`.
+ */
 export async function buildReleaseAfterReviewTransaction(
   connection: Connection,
   programId: PublicKey,
   accounts: ReleaseAfterReviewAccounts,
 ): Promise<Transaction> {
   const program = getProgram(connection, programId);
-  const escrowTokenAccount = accounts.escrowTokenAccount ?? escrowAta(accounts.asset, accounts.agreement);
-  const payerTokenAccount = accounts.payerTokenAccount ?? getAssociatedTokenAddressSync(accounts.asset, accounts.cranker, true);
+  const config = accounts.config ?? configPda(programId)[0];
+  const escrowTokenAccount =
+    accounts.escrowTokenAccount ?? escrowAta(accounts.asset, accounts.agreement);
+  const recipientTokenAccount =
+    accounts.recipientTokenAccount ??
+    getAssociatedTokenAddressSync(accounts.asset, accounts.recipient, true);
 
-  await requireExistingAta(connection, accounts.cranker, payerTokenAccount, accounts.asset);
+  const { treasuryTokenAccount, ensureInstruction: ensureTreasuryAta } =
+    await treasuryAtaForSettlement(
+      connection,
+      programId,
+      accounts.cranker,
+      accounts.asset,
+      accounts.treasuryTokenAccount,
+    );
+
+  await requireExistingAta(
+    connection,
+    accounts.recipient,
+    recipientTokenAccount,
+    accounts.asset,
+  );
 
   const instruction = await program.methods
     .releaseAfterReview()
     .accountsPartial({
-      agreement: accounts.agreement,
       cranker: accounts.cranker,
+      config,
+      agreement: accounts.agreement,
       escrowTokenAccount,
-      payerTokenAccount,
-      tokenProgram: accounts.tokenProgram,
+      recipientTokenAccount,
+      treasuryTokenAccount,
+      tokenProgram: TOKEN_PROGRAM_ID,
     })
     .instruction();
 
-  return withBlockhash(connection, new Transaction().add(instruction), accounts.cranker);
+  return withBlockhash(
+    connection,
+    new Transaction().add(ensureTreasuryAta, instruction),
+    accounts.cranker,
+  );
 }
 
 /** Accounts `resolveDispute` needs. */
@@ -726,32 +832,80 @@ export interface ResolveDisputeAccounts {
   arbiter: PublicKey;
   outcome: { release: {} } | { refund: {} } | { split: { recipientBps: BN } };
   asset: PublicKey;
+  /** The stored payer, whose ATA receives a refund / split share. */
+  payer: PublicKey;
+  /** The stored recipient, whose ATA receives a release / split share. */
+  recipient: PublicKey;
+  config?: PublicKey;
   escrowTokenAccount?: PublicKey;
   payerTokenAccount?: PublicKey;
   recipientTokenAccount?: PublicKey;
-  tokenProgram: PublicKey;
+  treasuryTokenAccount?: PublicKey;
 }
 
-/** Build a `resolveDispute` transaction — arbiter rules on a dispute. */
+/**
+ * Build a `resolveDispute` transaction — the arbiter rules on a dispute.
+ *
+ * Account list matches resolve_dispute.rs / the IDL: arbiter (signer), config,
+ * agreement, escrow, payer / recipient / treasury token accounts, token
+ * program. The destination is always one of the three stored addresses — the
+ * payer, the recipient, or the Config's treasury — never the arbiter's, so the
+ * arbiter signs the transaction but cannot route funds to itself. The payer and
+ * recipient ATAs must already exist (neither is a signer here); the treasury
+ * ATA is created idempotently by the arbiter.
+ */
 export async function buildResolveDisputeTransaction(
   connection: Connection,
   programId: PublicKey,
   accounts: ResolveDisputeAccounts,
 ): Promise<Transaction> {
   const program = getProgram(connection, programId);
-  const escrowTokenAccount = accounts.escrowTokenAccount ?? escrowAta(accounts.asset, accounts.agreement);
+  const config = accounts.config ?? configPda(programId)[0];
+  const escrowTokenAccount =
+    accounts.escrowTokenAccount ?? escrowAta(accounts.asset, accounts.agreement);
+  const payerTokenAccount =
+    accounts.payerTokenAccount ??
+    getAssociatedTokenAddressSync(accounts.asset, accounts.payer, true);
+  const recipientTokenAccount =
+    accounts.recipientTokenAccount ??
+    getAssociatedTokenAddressSync(accounts.asset, accounts.recipient, true);
+
+  const { treasuryTokenAccount, ensureInstruction: ensureTreasuryAta } =
+    await treasuryAtaForSettlement(
+      connection,
+      programId,
+      accounts.arbiter,
+      accounts.asset,
+      accounts.treasuryTokenAccount,
+    );
+
+  await requireExistingAta(connection, accounts.payer, payerTokenAccount, accounts.asset);
+  await requireExistingAta(
+    connection,
+    accounts.recipient,
+    recipientTokenAccount,
+    accounts.asset,
+  );
 
   const instruction = await program.methods
     .resolveDispute(accounts.outcome as never)
     .accountsPartial({
-      agreement: accounts.agreement,
       arbiter: accounts.arbiter,
+      config,
+      agreement: accounts.agreement,
       escrowTokenAccount,
-      tokenProgram: accounts.tokenProgram,
+      payerTokenAccount,
+      recipientTokenAccount,
+      treasuryTokenAccount,
+      tokenProgram: TOKEN_PROGRAM_ID,
     })
     .instruction();
 
-  return withBlockhash(connection, new Transaction().add(instruction), accounts.arbiter);
+  return withBlockhash(
+    connection,
+    new Transaction().add(ensureTreasuryAta, instruction),
+    accounts.arbiter,
+  );
 }
 
 /** Accounts `splitAfterArbiterTimeout` needs. */
@@ -759,35 +913,127 @@ export interface SplitAfterArbiterTimeoutAccounts {
   agreement: PublicKey;
   cranker: PublicKey;
   asset: PublicKey;
+  /** The stored payer, whose ATA receives the payer's half of the split. */
+  payer: PublicKey;
+  /** The stored recipient, whose ATA receives the recipient's half of the split. */
+  recipient: PublicKey;
+  config?: PublicKey;
   escrowTokenAccount?: PublicKey;
   payerTokenAccount?: PublicKey;
-  tokenProgram: PublicKey;
+  recipientTokenAccount?: PublicKey;
+  treasuryTokenAccount?: PublicKey;
 }
 
-/** Build a `splitAfterArbiterTimeout` transaction — 50/50 split after arbiter window lapses. */
+/**
+ * Build a `splitAfterArbiterTimeout` transaction — permissionless fixed 50/50
+ * split once the arbiter's window has lapsed (`Disputed` → `Split`).
+ *
+ * Account list matches split_after_arbiter_timeout.rs / the IDL: cranker
+ * (signer), config, agreement, escrow, payer / recipient / treasury token
+ * accounts, token program. The split is fixed at 5000 bps — the cranker cannot
+ * choose it — and funds only ever reach the stored payer, the stored recipient,
+ * or the Config's treasury. The payer and recipient ATAs must already exist;
+ * the treasury ATA is created idempotently by the cranker.
+ */
 export async function buildSplitAfterArbiterTimeoutTransaction(
   connection: Connection,
   programId: PublicKey,
   accounts: SplitAfterArbiterTimeoutAccounts,
 ): Promise<Transaction> {
   const program = getProgram(connection, programId);
-  const escrowTokenAccount = accounts.escrowTokenAccount ?? escrowAta(accounts.asset, accounts.agreement);
-  const payerTokenAccount = accounts.payerTokenAccount ?? getAssociatedTokenAddressSync(accounts.asset, accounts.cranker, true);
+  const config = accounts.config ?? configPda(programId)[0];
+  const escrowTokenAccount =
+    accounts.escrowTokenAccount ?? escrowAta(accounts.asset, accounts.agreement);
+  const payerTokenAccount =
+    accounts.payerTokenAccount ??
+    getAssociatedTokenAddressSync(accounts.asset, accounts.payer, true);
+  const recipientTokenAccount =
+    accounts.recipientTokenAccount ??
+    getAssociatedTokenAddressSync(accounts.asset, accounts.recipient, true);
 
-  await requireExistingAta(connection, accounts.cranker, payerTokenAccount, accounts.asset);
+  const { treasuryTokenAccount, ensureInstruction: ensureTreasuryAta } =
+    await treasuryAtaForSettlement(
+      connection,
+      programId,
+      accounts.cranker,
+      accounts.asset,
+      accounts.treasuryTokenAccount,
+    );
+
+  await requireExistingAta(connection, accounts.payer, payerTokenAccount, accounts.asset);
+  await requireExistingAta(
+    connection,
+    accounts.recipient,
+    recipientTokenAccount,
+    accounts.asset,
+  );
 
   const instruction = await program.methods
     .splitAfterArbiterTimeout()
     .accountsPartial({
-      agreement: accounts.agreement,
       cranker: accounts.cranker,
+      config,
+      agreement: accounts.agreement,
       escrowTokenAccount,
       payerTokenAccount,
-      tokenProgram: accounts.tokenProgram,
+      recipientTokenAccount,
+      treasuryTokenAccount,
+      tokenProgram: TOKEN_PROGRAM_ID,
     })
     .instruction();
 
-  return withBlockhash(connection, new Transaction().add(instruction), accounts.cranker);
+  return withBlockhash(
+    connection,
+    new Transaction().add(ensureTreasuryAta, instruction),
+    accounts.cranker,
+  );
+}
+
+/** Accounts `dispute` needs. */
+export interface DisputeAccounts {
+  agreement: PublicKey;
+  /** The stored payer, the only signer `dispute` accepts. */
+  payer: PublicKey;
+  config?: PublicKey;
+}
+
+/**
+ * Build a `dispute` transaction — the payer rejects a delivery claim inside the
+ * review window (`DeliveryClaimed` → `Disputed`). Moves no money.
+ *
+ * Account list matches dispute.rs / the IDL: payer (signer), agreement, config.
+ * `config` is read at dispute time so the arbiter's deadline
+ * (`disputed_at + config.arbiter_timeout_secs`) is frozen onto the agreement,
+ * and `split_after_arbiter_timeout` later reads that frozen value rather than a
+ * live window an admin could move.
+ *
+ * `reason` is an FRS-1 `DisputeReason`; its variant name is exactly the
+ * Anchor enum variant (see `DISPUTE_REASON_CODES`), so the on-chain
+ * discriminant is the variant object `{ [reason]: {} }`.
+ */
+export async function buildDisputeTransaction(
+  connection: Connection,
+  programId: PublicKey,
+  accounts: DisputeAccounts,
+  reason: DisputeReason,
+): Promise<Transaction> {
+  const program = getProgram(connection, programId);
+  const config = accounts.config ?? configPda(programId)[0];
+
+  const instruction = await program.methods
+    .dispute({ [reason]: {} } as never)
+    .accountsPartial({
+      payer: accounts.payer,
+      agreement: accounts.agreement,
+      config,
+    })
+    .instruction();
+
+  return withBlockhash(
+    connection,
+    new Transaction().add(instruction),
+    accounts.payer,
+  );
 }
 
 /** Accounts `refund` needs. The destination is always the *stored* payer. */

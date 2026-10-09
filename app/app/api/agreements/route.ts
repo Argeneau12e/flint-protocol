@@ -32,6 +32,8 @@ import { newUuidBytes, formatUuid } from "../../../lib/frs1-chain";
 import { chainNowSeconds } from "../../../lib/chain-clock";
 import { parseDisplayAmount } from "../../../lib/display";
 import { internalFailureMessage, logInternalFailure } from "../../../lib/errors";
+import { isEmailAddress } from "../../../lib/notify";
+import { recordPayerEmail } from "../../../lib/payer-email";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +107,15 @@ export async function POST(request: Request): Promise<Response> {
     return fail(`The handle is too long: at most ${LIMITS.handle} bytes.`);
   }
 
+  // Optional payer email (task item 10). Purely a notification address: it is
+  // never sent on chain and never affects authorization. A malformed address is
+  // rejected up front rather than stored and bounced later; an absent one is
+  // simply not stored.
+  const payerEmailRaw = typeof body.payerEmail === "string" ? body.payerEmail.trim() : "";
+  if (payerEmailRaw !== "" && !isEmailAddress(payerEmailRaw)) {
+    return fail("That does not look like an email address.");
+  }
+
   // ---- expiry, checked against the chain clock and the program's own rule ----
   const minutes = typeof body.expiryMinutes === "number" ? body.expiryMinutes : NaN;
   if (!Number.isFinite(minutes) || minutes <= 0) {
@@ -136,6 +147,9 @@ export async function POST(request: Request): Promise<Response> {
       memo,
       ...(handle === "" ? {} : { handle }),
     });
+    // Only once the transaction actually builds: a failed build must not leave a
+    // notification record for an agreement that will never exist.
+    if (payerEmailRaw !== "") recordPayerEmail(uuid, payerEmailRaw);
     return new Response(
       JSON.stringify(
         {
