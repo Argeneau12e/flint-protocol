@@ -1317,6 +1317,214 @@ select:focus-visible {
   margin-top: var(--flint-space-3);
 }
 
+/* --- Task 3: payment request, evidence sheet, dispute dialog --- */
+
+.flint-pay-grid {
+  display: grid;
+  gap: var(--flint-space-4);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 900px) {
+  .flint-pay-grid {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    align-items: start;
+  }
+}
+
+.flint-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--flint-space-4);
+}
+
+.flint-status-pill {
+  align-items: center;
+  border: 1px solid var(--flint-line-strong);
+  border-radius: 99px;
+  color: var(--flint-muted);
+  display: inline-flex;
+  font-size: var(--flint-text-sm);
+  gap: 8px;
+  padding: 4px 12px;
+  white-space: nowrap;
+}
+
+.flint-status-dot {
+  border-radius: 99px;
+  display: inline-block;
+  height: 8px;
+  width: 8px;
+}
+
+.flint-status-pill[data-state="funded"] {
+  border-color: var(--flint-peach);
+  color: var(--flint-peach);
+}
+
+.flint-status-pill[data-state="delivered_in_review"] {
+  background: var(--flint-accent-soft);
+  border-color: var(--flint-accent);
+  color: var(--flint-accent);
+}
+
+.flint-status-pill[data-state="released"] {
+  border-color: var(--flint-success);
+  color: var(--flint-success);
+}
+
+.flint-status-pill[data-state="disputed"] {
+  border-color: var(--flint-error-text);
+  color: var(--flint-error-text);
+}
+
+.flint-status-pill[data-state="refunded"] {
+  border-color: var(--flint-info);
+  color: var(--flint-info);
+}
+
+.flint-status-pill[data-state="expired"],
+.flint-status-pill[data-state="cancelled"] {
+  color: var(--flint-faint);
+}
+
+.flint-amount-big {
+  font-family: var(--flint-font-mono);
+  font-size: var(--flint-text-amount);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  margin: var(--flint-space-2) 0;
+  overflow-wrap: anywhere;
+}
+
+.flint-copy-btn {
+  align-items: center;
+  border-radius: var(--flint-radius-control);
+  color: var(--flint-muted);
+  display: inline-flex;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.flint-copy-btn:hover {
+  color: var(--flint-ink);
+}
+
+.flint-copy-btn:focus-visible {
+  outline: 2px solid var(--flint-focus-ring);
+  outline-offset: 2px;
+}
+
+.flint-dropzone {
+  border: 1px dashed var(--flint-line-strong);
+  border-radius: var(--flint-radius-card);
+  cursor: pointer;
+  padding: var(--flint-space-6);
+  text-align: center;
+}
+
+.flint-dropzone[data-dragging="true"] {
+  border-color: var(--flint-accent);
+  background: var(--flint-accent-soft);
+}
+
+.flint-dropzone:focus-visible {
+  outline: 2px solid var(--flint-focus-ring);
+  outline-offset: 2px;
+}
+
+.flint-file-list {
+  display: grid;
+  gap: var(--flint-space-3);
+  list-style: none;
+  margin: var(--flint-space-3) 0 0;
+  padding: 0;
+}
+
+.flint-file-row {
+  align-items: flex-start;
+  border: 1px solid var(--flint-line);
+  border-radius: var(--flint-radius-card);
+  display: flex;
+  gap: var(--flint-space-3);
+  padding: var(--flint-space-3);
+}
+
+.flint-file-meta {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+
+.flint-hash {
+  font-family: var(--flint-font-mono);
+  font-size: var(--flint-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.flint-sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 var(--flint-space-4) var(--flint-space-4);
+}
+
+.flint-radio-row {
+  align-items: flex-start;
+  border: 1px solid var(--flint-line);
+  border-radius: var(--flint-radius-card);
+  cursor: pointer;
+  display: flex;
+  gap: var(--flint-space-3);
+  min-height: 44px;
+  padding: var(--flint-space-3);
+}
+
+.flint-radio-row:has(input:checked) {
+  border-color: var(--flint-accent);
+}
+
+.flint-radio-row input {
+  margin-top: 4px;
+}
+
+.flint-segment {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--flint-line-strong);
+  border-radius: var(--flint-radius-control);
+  overflow: hidden;
+}
+
+.flint-segment button {
+  background: transparent;
+  border: 0;
+  color: var(--flint-muted);
+  flex: 1;
+  min-height: 44px;
+  padding: 8px 4px;
+}
+
+.flint-segment button[aria-pressed="true"] {
+  background: var(--flint-accent);
+  color: var(--flint-ink);
+}
+
+.flint-segment button:focus-visible {
+  outline: 2px solid var(--flint-focus-ring);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flint-status-pill,
+  .flint-dropzone,
+  .flint-radio-row,
+  .flint-segment button {
+    transition: none;
+  }
+}
+
 /* --- Tables inside a card: roomier rows, and the header never wraps oddly --- */
 .flint-table th,
 .flint-table td {
