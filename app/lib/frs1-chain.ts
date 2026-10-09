@@ -16,7 +16,6 @@
  *     settlement signature is supplied by the caller that actually has it.
  */
 
-import { randomBytes } from "node:crypto";
 import type {
   Frs1Agreement,
   ConditionType,
@@ -98,9 +97,15 @@ export function uuidToBytes(uuid: string): Buffer {
  * different PDA and refuse a perfectly valid agreement.
  *
  * So: ids are generated here, and the masking in `formatUuid` is a no-op for them.
+ *
+ * Web Crypto (`globalThis.crypto.getRandomValues`) rather than `node:crypto`,
+ * so this module stays importable from client components: the bytes are the
+ * same 16 random bytes either way, and every runtime this build targets
+ * (Node 18+, modern browsers) provides Web Crypto.
  */
 export function newUuidBytes(): Buffer {
-  const bytes = randomBytes(16);
+  const bytes = Buffer.alloc(16);
+  globalThis.crypto.getRandomValues(bytes);
   bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
   bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 1
   return bytes;

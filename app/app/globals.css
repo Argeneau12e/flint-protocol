@@ -1525,6 +1525,34 @@ select:focus-visible {
   }
 }
 
+.flint-timeline {
+  display: grid;
+  gap: var(--flint-space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.flint-timeline-row {
+  align-items: baseline;
+  display: flex;
+  gap: var(--flint-space-3);
+  font-size: var(--flint-text-sm);
+}
+
+.flint-timeline-dot {
+  background: var(--flint-line-strong);
+  border-radius: 99px;
+  flex-shrink: 0;
+  height: 8px;
+  transform: translateY(-1px);
+  width: 8px;
+}
+
+.flint-timeline-row[data-done="true"] .flint-timeline-dot {
+  background: var(--flint-accent);
+}
+
 /* --- Tables inside a card: roomier rows, and the header never wraps oddly --- */
 .flint-table th,
 .flint-table td {
