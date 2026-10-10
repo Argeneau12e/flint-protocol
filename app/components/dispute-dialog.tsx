@@ -66,8 +66,10 @@ export function DisputeDialog({
   const [detail, setDetail] = useState("");
   const [success, setSuccess] = useState(false);
   const action = useTransactionAction(() => {
-    onDisputed();
-    onOpenChange(false);
+    // Stay open on success: the "Disputed" confirmation is the whole point of
+    // the success state. The parent's re-read shows the Disputed page behind
+    // this dialog; the person closes it with Done.
+    setSuccess(true);
   });
 
   async function submit() {
@@ -82,65 +84,93 @@ export function DisputeDialog({
         payer: new PublicKey(address),
       }, reason);
     });
-    setSuccess(true);
+  }
+
+  function close(nextOpen: boolean) {
+    if (!nextOpen && success) {
+      // Reset for the next time the dialog opens, and tell the parent to
+      // re-read chain state now that the dispute is filed.
+      setSuccess(false);
+      onDisputed();
+    }
+    onOpenChange(nextOpen);
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={close}>
       <DialogContent aria-describedby="dispute-desc">
         <DialogHeader>
-          <DialogTitle>Dispute this delivery</DialogTitle>
+          <DialogTitle>
+            {success ? "Dispute filed" : "Dispute this delivery"}
+          </DialogTitle>
           <DialogDescription id="dispute-desc">
-            The arbiter will decide where the funds go. This cannot be undone
-            by you afterwards.
+            {success
+              ? "The agreement is now in the arbiter's queue."
+              : "The arbiter will decide where the funds go. This cannot be undone by you afterwards."}
           </DialogDescription>
         </DialogHeader>
-        <div role="radiogroup" aria-label="Dispute reason" className="flint-stack">
-          {REASONS.map((entry) => (
-            <label key={entry.code} className="flint-radio-row">
-              <input
-                type="radio"
-                name="dispute-reason"
-                value={entry.code}
-                checked={reason === entry.code}
-                onChange={() => setReason(entry.code)}
-              />
-              <span>
-                <strong>{reasonLabel(entry.code)}</strong>
-                <span className="flint-muted"> — {entry.blurb}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-        <div className="flint-field">
-          <Label htmlFor="dispute-detail">
-            Detail for your own records (optional, stays on this page)
-          </Label>
-          <Textarea
-            id="dispute-detail"
-            value={detail}
-            maxLength={500}
-            rows={3}
-            onChange={(event) => setDetail(event.target.value)}
-            placeholder="What should the arbiter know?"
-          />
-        </div>
-        {action.error === null ? null : (
-          <p role="alert" className="flint-error-text">{action.error}</p>
-        )}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button variant="destructive" disabled={action.busy} onClick={() => void submit()}>
-            {action.busy ? "Submitting…" : "Confirm dispute"}
-          </Button>
         {success ? (
-          <p role="status" className="flint-note flint-success">
-            Dispute filed. The arbiter will decide where the funds go.
-          </p>
-        ) : null}
-        </DialogFooter>
+          <div className="flint-stack" role="status">
+            <p className="flint-note flint-success">
+              Dispute filed. The arbiter will decide where the funds go.
+            </p>
+            <p className="flint-muted">
+              Reason: {reasonLabel(reason)}. The proof and the stored arbiter
+              deadline are on the agreement page.
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => close(false)}>
+                Done
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <>
+            <div role="radiogroup" aria-label="Dispute reason" className="flint-stack">
+              {REASONS.map((entry) => (
+                <label key={entry.code} className="flint-radio-row">
+                  <input
+                    type="radio"
+                    name="dispute-reason"
+                    value={entry.code}
+                    checked={reason === entry.code}
+                    onChange={() => setReason(entry.code)}
+                  />
+                  <span>
+                    <strong>{reasonLabel(entry.code)}</strong>
+                    <span className="flint-muted"> — {entry.blurb}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="flint-field">
+              <Label htmlFor="dispute-detail">
+                Detail for your own records (optional, stays on this page)
+              </Label>
+              <Textarea
+                id="dispute-detail"
+                value={detail}
+                maxLength={500}
+                rows={3}
+                onChange={(event) => setDetail(event.target.value)}
+                placeholder="What should the arbiter know?"
+              />
+            </div>
+            {action.error === null ? null : (
+              <p role="alert" className="flint-error-text">
+                The dispute could not be filed. Nothing changed on chain — try again.
+              </p>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => close(false)}>
+                Cancel
+              </Button>
+              <Button variant="destructive" disabled={action.busy} onClick={() => void submit()}>
+                {action.busy ? "Submitting…" : "Confirm dispute"}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

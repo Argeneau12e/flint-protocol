@@ -6,7 +6,6 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useFlintWallet } from "@/lib/wallet";
 import { Countdown } from "@/components/payment-ui";
 import { EvidenceSheet } from "@/components/evidence-sheet";
 import { FundButton } from "@/components/payment-actions";
@@ -47,7 +46,6 @@ function AwaitingPayment(props: AgreementBodyProps & { amountDisplay: string }) 
 
 function FundedState(props: AgreementBodyProps & { amountDisplay: string }) {
   const { agreement, viewer } = props;
-  const { connected } = useFlintWallet();
   const [sheetOpen, setSheetOpen] = useState(false);
   const isRecipient = viewer === "recipient";
   const isPayer = viewer === "payer";
@@ -79,11 +77,26 @@ function FundedState(props: AgreementBodyProps & { amountDisplay: string }) {
           />
         </>
       ) : null}
-      {!connected || viewer === null ? (
-        <p className="flint-hint">Recipient? Connect wallet</p>
-      ) : null}
-      {viewer === "visitor" || viewer === "arbiter" ? (
-        <p className="flint-hint">Recipient? Connect wallet</p>
+      {/* Everyone who is not the recipient gets the same small nudge: the button
+          is keyed off chain state plus the connected wallet, so it is exactly
+          the recipient — in any browser — who sees the action above. */}
+      {!isRecipient ? (
+        <p className="flint-hint">
+          Recipient?{" "}
+          <button
+            type="button"
+            className="flint-link-button"
+            onClick={() => {
+              const el = document.getElementById("wallet-connect");
+              if (el !== null) {
+                el.scrollIntoView({ block: "nearest" });
+                el.querySelector("button")?.focus();
+              }
+            }}
+          >
+            Connect wallet
+          </button>
+        </p>
       ) : null}
     </div>
   );

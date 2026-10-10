@@ -32,6 +32,7 @@ import { newUuidBytes, formatUuid } from "../../../lib/frs1-chain";
 import { ALLOWED_REVIEW_WINDOWS } from "../../../lib/frs1-types";
 import { chainNowSeconds } from "../../../lib/chain-clock";
 import { parseDisplayAmount } from "../../../lib/display";
+import { MIN_AGREEMENT_WHOLE_TOKENS, wholeTokens } from "../../../lib/fees";
 import { internalFailureMessage, logInternalFailure } from "../../../lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -95,6 +96,14 @@ export async function POST(request: Request): Promise<Response> {
 
   const parsed = parseDisplayAmount(typeof body.amount === "string" ? body.amount : "", decimals);
   if (!parsed.ok) return fail(parsed.error);
+  // The program refuses anything below the configured minimum (20 whole
+  // tokens), so refuse here with a sentence rather than letting a wallet
+  // prompt be declined on chain.
+  if (wholeTokens(BigInt(parsed.baseUnits), decimals) < MIN_AGREEMENT_WHOLE_TOKENS) {
+    return fail(
+      `The minimum agreement is ${MIN_AGREEMENT_WHOLE_TOKENS} whole tokens — that amount is below it.`,
+    );
+  }
 
   const memo = typeof body.memo === "string" ? body.memo.trim() : "";
   if (Buffer.byteLength(memo, "utf8") > LIMITS.memo) {

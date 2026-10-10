@@ -103,7 +103,7 @@ export default function RootLayout({
 
               <SiteNav />
 
-              <div className="flint-header-actions">
+              <div className="flint-header-actions" id="wallet-connect">
                 {/* The cluster is a fact about this deployment, not a setting. */}
                 <span className="flint-cluster">{CLUSTER}</span>
                 <ConnectButton />

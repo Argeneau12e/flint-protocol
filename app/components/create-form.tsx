@@ -34,6 +34,8 @@ import {
   parseDisplayAmount,
 } from "@/lib/display";
 import { FeeLine, feeBaseUnitsOrNull } from "@/components/fee-line";
+import { MIN_AGREEMENT_WHOLE_TOKENS, wholeTokens } from "@/lib/fees";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFlintWallet, useTransactionAction } from "@/lib/wallet";
 
 /** The server's answer to a create request. */
@@ -178,12 +180,24 @@ export function CreateForm({
       ? "That is a very short window. If it expires unconfirmed, you can never be paid."
       : null;
 
-  const invalid = titleError !== null || !amountCheck.ok;
+  // The protocol minimum (20 whole tokens, from lib/fees.ts). Checked against
+  // the parsed amount only — an unparseable amount already has its own error —
+  // and, like every other field error, it is *shown* only after blur or a
+  // submit attempt so a half-typed figure never reads as a rejection.
+  const belowMinimum =
+    amountCheck.ok &&
+    decimals !== null &&
+    wholeTokens(BigInt(amountCheck.baseUnits), decimals) < MIN_AGREEMENT_WHOLE_TOKENS
+      ? `The minimum agreement is ${MIN_AGREEMENT_WHOLE_TOKENS} ${asset.label}.`
+      : null;
+
+  const invalid = titleError !== null || !amountCheck.ok || belowMinimum !== null;
   const ready = connected && !invalid;
 
   // Whether each field's error is allowed on screen right now (see above).
   const showTitleError = (titleTouched || attempted) && titleError !== null;
-  const showAmountError = (amountTouched || attempted) && !amountCheck.ok;
+  const showAmountError =
+    (amountTouched || attempted) && (!amountCheck.ok || belowMinimum !== null);
 
   const action = useTransactionAction(() => {
     // Confirmed. Only now does the page get to say the agreement exists, and
@@ -309,6 +323,16 @@ export function CreateForm({
           >
             Open the agreement
           </a>
+          <a
+            className="flint-button"
+            href={`https://wa.me/?text=${encodeURIComponent(
+              `Payment request: ${title.trim()} — ${page}`,
+            )}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Share on WhatsApp
+          </a>
           <button
             type="button"
             className="flint-button"
@@ -424,7 +448,9 @@ export function CreateForm({
                 <p className="flint-error-text">
                   {amount.trim() === ""
                     ? "Enter an amount."
-                    : amountCheck.error}
+                    : !amountCheck.ok
+                    ? amountCheck.error
+                    : belowMinimum}
                 </p>
               ) : amountCheck.ok ? (
                 <p className="flint-hint">
@@ -482,17 +508,35 @@ export function CreateForm({
               label="Review window"
               hint="The time the payer has to review and dispute before the funds move."
             >
-              <div className="flint-segment" role="group" aria-label="Review window">
-                {reviewWindowPresets.map((preset) => (
-                  <button
-                    key={preset.seconds}
-                    type="button"
-                    aria-pressed={reviewWindowSecs === preset.seconds}
-                    onClick={() => setReviewWindowSecs(preset.seconds)}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
+              <div className="flint-row" style={{ alignItems: "center", gap: 6 }}>
+                <div className="flint-segment" role="group" aria-label="Review window">
+                  {reviewWindowPresets.map((preset) => (
+                    <button
+                      key={preset.seconds}
+                      type="button"
+                      aria-pressed={reviewWindowSecs === preset.seconds}
+                      onClick={() => setReviewWindowSecs(preset.seconds)}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="flint-copy-btn"
+                      aria-label="What is the review window?"
+                    >
+                      ?
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    After delivery, the payer has this long to review and dispute.
+                    When the window closes the funds can be released to you
+                    without another signature.
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </Field>
 
@@ -537,14 +581,28 @@ export function CreateForm({
               success={null}
             />
 
-            <FeeLine
-              amountBaseUnits={
-                amountCheck.ok ? amountCheck.baseUnits : "0"
-              }
-              feeBaseUnitsRaw={feeBaseUnitsValue ?? "0"}
-              decimals={decimals ?? 0}
-              symbol={assetSymbol}
-            />
+            {feeBaseUnitsValue === null ? (
+              amountCheck.ok ? (
+                <p className="flint-hint">
+                  The fee line appears once the amount is at least{" "}
+                  {MIN_AGREEMENT_WHOLE_TOKENS} {asset.label}.
+                </p>
+              ) : (
+                <FeeLine
+                  amountBaseUnits="0"
+                  feeBaseUnitsRaw="0"
+                  decimals={decimals ?? 0}
+                  symbol={asset.label}
+                />
+              )
+            ) : (
+              <FeeLine
+                amountBaseUnits={amountCheck.ok ? amountCheck.baseUnits : "0"}
+                feeBaseUnitsRaw={feeBaseUnitsValue}
+                decimals={decimals ?? 0}
+                symbol={asset.label}
+              />
+            )}
 
             <div>
               <button

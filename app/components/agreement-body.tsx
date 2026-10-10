@@ -60,7 +60,10 @@ export function AgreementBody(props: AgreementBodyProps) {
                 </TooltipTrigger>
                 {asset.tooltip === null ? null : <TooltipContent>{asset.tooltip}</TooltipContent>}
               </Tooltip>
-              {asset.badge === null ? null : <span className="flint-badge">{asset.badge}</span>}
+              {/* The deployment context, not just the symbol: this build only
+                  ever runs on devnet, so the badge answers "is this real
+                  money?" before the figure is read. */}
+              <span className="flint-badge">{asset.badge ?? props.cluster}</span>
             </span>
           </p>
           {feeRaw === null || decimals === null ? null : (

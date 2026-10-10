@@ -245,6 +245,7 @@
   /* Focus ring: one definition, used by every interactive element. */
   --flint-focus-width: 2px;
   --flint-focus-offset: 2px;
+  --flint-focus-ring: var(--flint-accent);
   /* ---- shadcn/ui theme variables --------------------------------------
    * The component library reads *these* names (`bg-background`,
    * `text-muted-foreground`, `border-border`, …). Every value below is either a
@@ -1715,34 +1716,30 @@ select:focus-visible {
     @apply font-sans;
   }
 }
-/* Checkbox + toggle */
-.flint-checkbox {
-  display: flex;
-  align-items: center;
-  gap: var(--flint-space-2);
-  cursor: pointer;
-  font-size: var(--flint-text-sm);
-}
-
-.flint-checkbox input[type="checkbox"] {
-  width: 1.0625rem;
-  height: 1.0625rem;
-  border: 1px solid var(--flint-line-strong);
-  border-radius: 3px;
-  accent-color: var(--flint-accent);
-  flex-shrink: 0;
-}
-
-.flint-checkbox input[type="checkbox"]:checked {
-  background: var(--flint-accent);
-  border-color: var(--flint-accent);
-}
-
-.flint-checkbox-label {
-  color: var(--flint-ink);
-}
-
 /* Description field */
 .flint-field textarea.flint-input {
   resize: vertical;
+}
+
+/* An inline action that reads as a link but is a real button. */
+.flint-link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--flint-accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.flint-link-button:hover {
+  text-decoration-thickness: 2px;
+}
+
+.flint-link-button:focus-visible {
+  outline: 2px solid var(--flint-focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
