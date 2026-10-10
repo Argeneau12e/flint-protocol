@@ -4,8 +4,8 @@
  * Three things must all hold before a file is accepted (task item 5):
  *   1. the agreement exists and is `Funded` (checked by the route against the
  *      chain — this module does not read the chain);
- *   2. the request carries a nonce this server issued, still within its 5-minute
- *      life, and not already spent (see `evidence-nonce.ts`);
+ *   2. the request carries a nonce this server signed, still within its
+ *      5-minute life, bound to this agreement (see `evidence-nonce.ts`);
  *   3. an ed25519 signature, made by the recipient's wallet, over the exact
  *      message `flint-evidence-upload:<agreement>:<nonce>`.
  *
@@ -70,19 +70,19 @@ export function verifyEd25519(
 
 /**
  * Full upload authorization for `agreement` from `recipientBase58`:
- * consume the nonce, then verify the recipient's signature over the signed
- * message. The nonce is consumed *before* the signature is checked so that a
- * failed signature still burns the nonce — a caller cannot retry the same
- * nonce indefinitely hoping to get the signature right.
+ * verify the nonce (stateless HMAC — expiry and agreement binding), then
+ * verify the recipient's signature over the signed message. The nonce is
+ * checked first so a stale or foreign request never reaches the signature
+ * check.
  */
-export function authorizeEvidenceUpload(params: {
+export async function authorizeEvidenceUpload(params: {
   agreement: string;
   recipient: string;
   nonce: string;
   signature: string;
   nowSeconds?: number;
-}): UploadAuthResult {
-  const nonceCheck = consumeNonce(
+}): Promise<UploadAuthResult> {
+  const nonceCheck = await consumeNonce(
     params.agreement,
     params.nonce,
     params.nowSeconds,

@@ -44,6 +44,14 @@ const EXPIRY_PRESETS = [
   { minutes: 43200, label: "30 days" },
 ];
 
+/** Review windows offered as presets, in seconds. */
+const REVIEW_WINDOW_PRESETS = [
+  { seconds: 6 * 60 * 60, label: "6 hours" },
+  { seconds: 12 * 60 * 60, label: "12 hours" },
+  { seconds: 24 * 60 * 60, label: "24 hours" },
+  { seconds: 48 * 60 * 60, label: "48 hours" },
+];
+
 export default async function NewAgreementPage() {
   let config = null;
   let configError: string | null = null;
@@ -85,6 +93,7 @@ export default async function NewAgreementPage() {
         assetSymbol={config.assetSymbol}
         decimals={decimals}
         expiryPresets={EXPIRY_PRESETS}
+        reviewWindowPresets={REVIEW_WINDOW_PRESETS}
         conditionDescription={DEFAULT_CONDITION_DESCRIPTION}
         cluster={CLUSTER}
       />

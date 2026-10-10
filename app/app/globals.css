@@ -1715,3 +1715,34 @@ select:focus-visible {
     @apply font-sans;
   }
 }
+/* Checkbox + toggle */
+.flint-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--flint-space-2);
+  cursor: pointer;
+  font-size: var(--flint-text-sm);
+}
+
+.flint-checkbox input[type="checkbox"] {
+  width: 1.0625rem;
+  height: 1.0625rem;
+  border: 1px solid var(--flint-line-strong);
+  border-radius: 3px;
+  accent-color: var(--flint-accent);
+  flex-shrink: 0;
+}
+
+.flint-checkbox input[type="checkbox"]:checked {
+  background: var(--flint-accent);
+  border-color: var(--flint-accent);
+}
+
+.flint-checkbox-label {
+  color: var(--flint-ink);
+}
+
+/* Description field */
+.flint-field textarea.flint-input {
+  resize: vertical;
+}

@@ -4,7 +4,7 @@
  * Covers the five properties the task names (item 11):
  *   1. manifest hashing and canonical JSON — byte-for-byte reproducible;
  *   2. the upload allowlist — extension and MIME must agree, SVG/HTML refused;
- *   3. nonce expiry and single use — a captured signature cannot be replayed;
+ *   3. nonce expiry and agreement binding — a stale or foreign nonce fails,
  *   4. the external link helper — only http(s), hostname for display;
  *   5. state derivation — including "a claimed agreement is never expired".
  *
@@ -28,8 +28,8 @@ import {
 import {
   consumeNonce,
   issueNonce,
+  MissingNonceSecretError,
   NONCE_TTL_SECONDS,
-  resetNonces,
   uploadSignMessage,
 } from "../../app/lib/evidence-nonce";
 import { externalLinkHost, parseExternalLink } from "../../app/lib/links";
@@ -185,41 +185,86 @@ describe("the upload allowlist", () => {
 });
 
 describe("upload nonces", () => {
-  it("is single use: the second consume fails", () => {
-    resetNonces();
-    const { nonce } = issueNonce(AGREEMENT, 1_000_000);
-    assert.equal(consumeNonce(AGREEMENT, nonce, 1_000_001), "ok", "first use passes");
-    assert.equal(consumeNonce(AGREEMENT, nonce, 1_000_002), "used", "replay refused");
+  // The nonce is an HMAC under FLINT_NONCE_SECRET; tests mint their own secret.
+  const REAL_SECRET = process.env.FLINT_NONCE_SECRET;
+  before(() => {
+    process.env.FLINT_NONCE_SECRET = "test-secret-for-offline-specs";
+  });
+  after(() => {
+    if (REAL_SECRET === undefined) delete process.env.FLINT_NONCE_SECRET;
+    else process.env.FLINT_NONCE_SECRET = REAL_SECRET;
   });
 
-  it("expires exactly after five minutes", () => {
-    resetNonces();
+  it("expires exactly after five minutes", async () => {
     const issuedAt = 1_000_000;
-    const { nonce, expiresAt } = issueNonce(AGREEMENT, issuedAt);
+    const { nonce, expiresAt } = await issueNonce(AGREEMENT, issuedAt);
     assert.equal(expiresAt, issuedAt + NONCE_TTL_SECONDS);
     assert.equal(NONCE_TTL_SECONDS, 300, "the nonce lifetime is five minutes");
     assert.equal(
-      consumeNonce(AGREEMENT, nonce, issuedAt + NONCE_TTL_SECONDS - 1),
+      await consumeNonce(AGREEMENT, nonce, issuedAt + NONCE_TTL_SECONDS - 1),
       "ok",
       "valid one second before expiry",
     );
-
-    resetNonces();
-    const { nonce: fresh } = issueNonce(AGREEMENT, issuedAt);
     assert.equal(
-      consumeNonce(AGREEMENT, fresh, issuedAt + NONCE_TTL_SECONDS),
+      await consumeNonce(AGREEMENT, nonce, issuedAt + NONCE_TTL_SECONDS),
       "expired",
       "expired exactly at expiry",
     );
   });
 
-  it("is scoped to the agreement and rejects unknown nonces", () => {
-    resetNonces();
-    const { nonce } = issueNonce(AGREEMENT, 1_000_000);
-    assert.equal(consumeNonce("some-other-agreement", nonce, 1_000_001), "unknown");
-    assert.equal(consumeNonce(AGREEMENT, "not-issued", 1_000_001), "unknown");
-    // Still usable afterwards: the cross-agreement attempt did not burn it.
-    assert.equal(consumeNonce(AGREEMENT, nonce, 1_000_002), "ok");
+  it("is scoped to the agreement and rejects unknown nonces", async () => {
+    const { nonce } = await issueNonce(AGREEMENT, 1_000_000);
+    assert.equal(await consumeNonce("some-other-agreement", nonce, 1_000_001), "unknown");
+    assert.equal(await consumeNonce(AGREEMENT, "not-issued", 1_000_001), "unknown");
+    // A foreign agreement's attempt does not invalidate the original.
+    assert.equal(await consumeNonce(AGREEMENT, nonce, 1_000_002), "ok");
+  });
+
+  it("rejects a tampered expiry, value or agreement inside the nonce", async () => {
+    const { nonce } = await issueNonce(AGREEMENT, 1_000_000);
+    const [value, expiry, tag] = nonce.split(".");
+    // Push the expiry far into the future: the tag no longer matches.
+    assert.equal(
+      await consumeNonce(AGREEMENT, `${value}.${Number(expiry) + 600}.${tag}`, 1_000_001),
+      "unknown",
+      "extended expiry fails the tag",
+    );
+    // Swap the random value.
+    assert.equal(
+      await consumeNonce(AGREEMENT, `deadbeefdeadbeefdeadbeef.${expiry}.${tag}`, 1_000_001),
+      "unknown",
+      "swapped value fails the tag",
+    );
+    // Flip one character of the tag.
+    const flipped = (tag ?? "").slice(0, -1) + ((tag ?? "").endsWith("A") ? "B" : "A");
+    assert.equal(
+      await consumeNonce(AGREEMENT, `${value}.${expiry}.${flipped}`, 1_000_001),
+      "unknown",
+      "altered tag fails",
+    );
+    // Malformed shapes.
+    assert.equal(await consumeNonce(AGREEMENT, "no-dots-here", 1_000_001), "unknown");
+    assert.equal(await consumeNonce(AGREEMENT, `${value}.${expiry}`, 1_000_001), "unknown");
+    // The untouched original still verifies (a rejected forgery burned nothing).
+    assert.equal(await consumeNonce(AGREEMENT, nonce, 1_000_001), "ok");
+  });
+
+  it("refuses to mint when FLINT_NONCE_SECRET is missing", async () => {
+    const saved = process.env.FLINT_NONCE_SECRET;
+    delete process.env.FLINT_NONCE_SECRET;
+    try {
+      await assert.rejects(
+        () => issueNonce(AGREEMENT, 1_000_000),
+        (error: Error) => error instanceof MissingNonceSecretError,
+        "a clear error, not a silent bad nonce",
+      );
+      await assert.rejects(
+        () => consumeNonce(AGREEMENT, "a.b.c", 1_000_001),
+        (error: Error) => error instanceof MissingNonceSecretError,
+      );
+    } finally {
+      if (saved !== undefined) process.env.FLINT_NONCE_SECRET = saved;
+    }
   });
 
   it("builds the signed message the route documents", () => {

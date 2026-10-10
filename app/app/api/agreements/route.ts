@@ -29,11 +29,10 @@ import {
   serializeForClient,
 } from "../../../lib/flint-program";
 import { newUuidBytes, formatUuid } from "../../../lib/frs1-chain";
+import { ALLOWED_REVIEW_WINDOWS } from "../../../lib/frs1-types";
 import { chainNowSeconds } from "../../../lib/chain-clock";
 import { parseDisplayAmount } from "../../../lib/display";
 import { internalFailureMessage, logInternalFailure } from "../../../lib/errors";
-import { isEmailAddress } from "../../../lib/notify";
-import { recordPayerEmail } from "../../../lib/payer-email";
 
 export const dynamic = "force-dynamic";
 
@@ -107,13 +106,13 @@ export async function POST(request: Request): Promise<Response> {
     return fail(`The handle is too long: at most ${LIMITS.handle} bytes.`);
   }
 
-  // Optional payer email (task item 10). Purely a notification address: it is
-  // never sent on chain and never affects authorization. A malformed address is
-  // rejected up front rather than stored and bounced later; an absent one is
-  // simply not stored.
-  const payerEmailRaw = typeof body.payerEmail === "string" ? body.payerEmail.trim() : "";
-  if (payerEmailRaw !== "" && !isEmailAddress(payerEmailRaw)) {
-    return fail("That does not look like an email address.");
+  // ---- review window, one of the values the program enforces (Section 4.1) ----
+  const reviewWindowSecs =
+    typeof body.reviewWindowSecs === "number" ? body.reviewWindowSecs : 24 * 60 * 60;
+  if (!ALLOWED_REVIEW_WINDOWS.includes(reviewWindowSecs)) {
+    return fail(
+      `The review window must be one of ${ALLOWED_REVIEW_WINDOWS.join(", ")} seconds.`,
+    );
   }
 
   // ---- expiry, checked against the chain clock and the program's own rule ----
@@ -143,13 +142,13 @@ export async function POST(request: Request): Promise<Response> {
       amount: parsed.baseUnits,
       asset: config.assetMint,
       expiresAt,
+      reviewWindowSecs,
       title,
       memo,
       ...(handle === "" ? {} : { handle }),
     });
-    // Only once the transaction actually builds: a failed build must not leave a
-    // notification record for an agreement that will never exist.
-    if (payerEmailRaw !== "") recordPayerEmail(uuid, payerEmailRaw);
+    // Only once the transaction actually builds: a failed build must not leave
+    // any side effect for an agreement that will never exist.
     return new Response(
       JSON.stringify(
         {
@@ -159,6 +158,7 @@ export async function POST(request: Request): Promise<Response> {
           message:
             "Approve this in your wallet to create the agreement. This stores the terms and opens a small escrow account; it does not move any money. Whoever funds the agreement first becomes the payer.",
           condition: { type: "manual-confirmation", description: DEFAULT_CONDITION_DESCRIPTION },
+          reviewWindowSecs,
         },
         null,
         2,

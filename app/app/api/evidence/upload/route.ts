@@ -13,7 +13,8 @@
  * stored:
  *   1. the agreement exists and is `Funded` — verified against the chain, not
  *      from the request;
- *   2. a nonce this server issued, unexpired (5 min) and single-use;
+ *   2. a nonce this server signed, unexpired (5 min) and bound to this
+ *      agreement (stateless HMAC, so instances need no shared state);
  *   3. an ed25519 signature by the agreement's *recipient* over
  *      `flint-evidence-upload:<agreement>:<nonce>`.
  *
@@ -46,7 +47,7 @@ import {
   putEvidenceManifest,
 } from "../../../../lib/evidence-store";
 import { authorizeEvidenceUpload } from "../../../../lib/upload-auth";
-import { issueNonce } from "../../../../lib/evidence-nonce";
+import { issueNonce, MissingNonceSecretError } from "../../../../lib/evidence-nonce";
 import { checkX402RateLimit, resetX402RateLimit } from "../../../../lib/throttle";
 import { readAgreement } from "../../../../lib/flint-program";
 import { toFrs1Agreement, type DecodableAgreement } from "../../../../lib/frs1-chain";
@@ -74,13 +75,13 @@ function jsonError(message: string, status: number): Response {
 }
 
 /**
- * GET /api/evidence/upload?agreement=<addr> — issue an upload nonce.
+ * GET /api/evidence/upload?agreement=<addr> — mint an upload nonce.
  *
  * The client asks for a nonce, has the recipient sign
  * `flint-evidence-upload:<agreement>:<nonce>`, and posts both back with the
- * files. Issuing the nonce here (rather than letting the client invent one) is
- * what makes the signature non-replayable: the server holds the set of nonces it
- * will accept, each single-use and 5-minute-lived.
+ * files. The nonce is an HMAC under FLINT_NONCE_SECRET over the agreement, a
+ * random value and its expiry, so any instance can verify it without shared
+ * state, only inside its 5-minute life, and only for the agreement it names.
  */
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
@@ -92,11 +93,21 @@ export async function GET(request: Request): Promise<Response> {
     return jsonError("bad_agreement", 400);
   }
 
-  const { nonce, expiresAt } = issueNonce(agreement);
-  return new Response(
-    JSON.stringify({ nonce, expiresAt, message: `flint-evidence-upload:${agreement}:${nonce}` }),
-    { status: 200, headers: { "content-type": "application/json", "cache-control": "no-store" } },
-  );
+  try {
+    const { nonce, expiresAt } = await issueNonce(agreement);
+    return new Response(
+      JSON.stringify({ nonce, expiresAt, message: `flint-evidence-upload:${agreement}:${nonce}` }),
+      { status: 200, headers: { "content-type": "application/json", "cache-control": "no-store" } },
+    );
+  } catch (error) {
+    if (error instanceof MissingNonceSecretError) {
+      return jsonError(
+        "Evidence uploads need FLINT_NONCE_SECRET set on the server. Set it and redeploy.",
+        503,
+      );
+    }
+    throw error;
+  }
 }
 
 /** The on-chain agreement, or an error response. */
@@ -215,14 +226,26 @@ export async function POST(request: Request): Promise<Response> {
   const funded = await loadFundedAgreement(agreement);
   if (!funded.ok) return funded.response;
 
-  // (2 + 3) Nonce single-use + recipient ed25519 signature. The signature must
-  // be by the *stored recipient*, so a stranger cannot upload for someone else.
-  const auth = authorizeEvidenceUpload({
-    agreement,
-    recipient: funded.recipient,
-    nonce,
-    signature,
-  });
+  // (2 + 3) Nonce check (stateless HMAC: expiry + agreement binding) and the
+  // recipient ed25519 signature. The signature must be by the *stored
+  // recipient*, so a stranger cannot upload for someone else.
+  let auth;
+  try {
+    auth = await authorizeEvidenceUpload({
+      agreement,
+      recipient: funded.recipient,
+      nonce,
+      signature,
+    });
+  } catch (error) {
+    if (error instanceof MissingNonceSecretError) {
+      return jsonError(
+        "Evidence uploads need FLINT_NONCE_SECRET set on the server. Set it and redeploy.",
+        503,
+      );
+    }
+    throw error;
+  }
   if (!auth.ok) return jsonError(auth.reason ?? "unauthorized", 403);
 
   // Collect files, links and the note from the form.

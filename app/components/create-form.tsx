@@ -33,6 +33,7 @@ import {
   formatBaseUnits,
   parseDisplayAmount,
 } from "@/lib/display";
+import { FeeLine, feeBaseUnitsOrNull } from "@/components/fee-line";
 import { useFlintWallet, useTransactionAction } from "@/lib/wallet";
 
 /** The server's answer to a create request. */
@@ -92,6 +93,7 @@ export function CreateForm({
   assetSymbol,
   decimals,
   expiryPresets,
+  reviewWindowPresets,
   conditionDescription,
   cluster,
 }: {
@@ -99,6 +101,7 @@ export function CreateForm({
   assetSymbol: string;
   decimals: number | null;
   expiryPresets: ReadonlyArray<{ minutes: number; label: string }>;
+  reviewWindowPresets: ReadonlyArray<{ seconds: number; label: string }>;
   conditionDescription: string;
   cluster: string;
 }) {
@@ -111,6 +114,8 @@ export function CreateForm({
   const [expiry, setExpiry] = useState<number>(
     expiryPresets[1]?.minutes ?? 1440
   );
+
+  const [reviewWindowSecs, setReviewWindowSecs] = useState<number>(24 * 60 * 60);
 
   /**
    * The deadline the current choice implies, once the browser has one.
@@ -158,6 +163,10 @@ export function CreateForm({
   const amountCheck = useMemo(
     () => parseDisplayAmount(amount, scale),
     [amount, scale]
+  );
+  const feeBaseUnitsValue = feeBaseUnitsOrNull(
+    amountCheck.ok ? amountCheck.baseUnits : "0",
+    decimals ?? 0,
   );
 
   // Validation mirrors the server's rules rather than trusting the server to be
@@ -209,6 +218,7 @@ export function CreateForm({
           amount: amount.trim(),
           memo: memo.trim(),
           expiryMinutes: expiry,
+          reviewWindowSecs,
         }),
       });
       const body = (await response
@@ -330,6 +340,15 @@ export function CreateForm({
       : amountCheck.ok
       ? `${formatBaseUnits(amountCheck.baseUnits, decimals)} ${asset.label}`
       : "—";
+
+  const reviewWindowLabel =
+    reviewWindowSecs === 6 * 60 * 60
+      ? "6 hours"
+      : reviewWindowSecs === 12 * 60 * 60
+      ? "12 hours"
+      : reviewWindowSecs === 48 * 60 * 60
+      ? "48 hours"
+      : "24 hours";
 
   return (
     <div className="flint-stack">
@@ -459,6 +478,25 @@ export function CreateForm({
             </Field>
 
             <Field
+              id="reviewWindow"
+              label="Review window"
+              hint="The time the payer has to review and dispute before the funds move."
+            >
+              <div className="flint-segment" role="group" aria-label="Review window">
+                {reviewWindowPresets.map((preset) => (
+                  <button
+                    key={preset.seconds}
+                    type="button"
+                    aria-pressed={reviewWindowSecs === preset.seconds}
+                    onClick={() => setReviewWindowSecs(preset.seconds)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            <Field
               id="memo"
               label="Note to the payer (optional)"
               hint="Included in the Blink. It cannot change what the payer is agreeing to — only the amount, asset, expiry and condition bind them."
@@ -474,6 +512,7 @@ export function CreateForm({
                 aria-describedby="memo-hint"
               />
             </Field>
+
           </div>
 
           <div className="flint-card">
@@ -496,6 +535,15 @@ export function CreateForm({
               message={action.message}
               error={action.error}
               success={null}
+            />
+
+            <FeeLine
+              amountBaseUnits={
+                amountCheck.ok ? amountCheck.baseUnits : "0"
+              }
+              feeBaseUnitsRaw={feeBaseUnitsValue ?? "0"}
+              decimals={decimals ?? 0}
+              symbol={assetSymbol}
             />
 
             <div>
@@ -534,6 +582,10 @@ export function CreateForm({
             {title.trim() === "" ? "An untitled agreement" : title.trim()}
           </p>
           <dl className="flint-kv-group" style={{ marginTop: "1rem" }}>
+            <div className="flint-kv">
+              <dt>Review window</dt>
+              <dd>{reviewWindowLabel}</dd>
+            </div>
             <div className="flint-kv">
               <dt>Expires after</dt>
               <dd>

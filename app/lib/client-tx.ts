@@ -11,7 +11,7 @@
 "use client";
 
 import { PublicKey, type Connection } from "@solana/web3.js";
-import { DEFAULT_PROGRAM_ID } from "@/lib/config";
+import { DEFAULT_PROGRAM_ID } from "./config";
 import {
   buildClaimDeliveryTransaction,
   buildDisputeTransaction,
@@ -25,8 +25,8 @@ import {
   type DisputeAccounts,
   type ReleaseAfterReviewAccounts,
   type SplitAfterArbiterTimeoutAccounts,
-} from "@/lib/flint-program";
-import type { DisputeReason } from "@/lib/frs1-types";
+} from "./flint-program";
+import type { DisputeReason } from "./frs1-types";
 
 /** The deployed program, for client-side transaction building. */
 export function flintProgramId(): PublicKey {

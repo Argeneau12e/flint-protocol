@@ -47,10 +47,14 @@ export async function uploadEvidence(params: {
     error?: string;
   };
   if (!nonceResponse.ok || typeof nonceBody.nonce !== "string") {
+    const serverMessage =
+      typeof nonceBody.error === "string" && nonceBody.error !== "" ? nonceBody.error : null;
     return {
       upload: null,
       error:
-        nonceResponse.status === 429
+        serverMessage !== null
+          ? serverMessage
+          : nonceResponse.status === 429
           ? "Too many uploads at once. Wait a minute and try again."
           : "Could not start the upload. Try again.",
     };

@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { resolve } from "node:path";
 
 /**
  * Flint app configuration.
@@ -8,6 +9,11 @@ import type { NextConfig } from "next";
  */
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // The repo root owns the lockfile; pointing turbopack at it keeps the
+  // workspace warning quiet without changing what gets built.
+  turbopack: {
+    root: resolve(__dirname, ".."),
+  },
 };
 
 export default nextConfig;

@@ -64,6 +64,7 @@ export function DisputeDialog({
   const { address } = useFlintWallet();
   const [reason, setReason] = useState<DisputeReason>("notAsDescribed");
   const [detail, setDetail] = useState("");
+  const [success, setSuccess] = useState(false);
   const action = useTransactionAction(() => {
     onDisputed();
     onOpenChange(false);
@@ -81,6 +82,7 @@ export function DisputeDialog({
         payer: new PublicKey(address),
       }, reason);
     });
+    setSuccess(true);
   }
 
   return (
@@ -133,6 +135,11 @@ export function DisputeDialog({
           <Button variant="destructive" disabled={action.busy} onClick={() => void submit()}>
             {action.busy ? "Submitting…" : "Confirm dispute"}
           </Button>
+        {success ? (
+          <p role="status" className="flint-note flint-success">
+            Dispute filed. The arbiter will decide where the funds go.
+          </p>
+        ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>
