@@ -17,16 +17,89 @@
  */
 
 import Link from "next/link";
+import type { Metadata } from "next";
 import { explorerAddressUrl, explorerTxUrl, getConnection } from "@/lib/solana";
 import { readConfig } from "@/lib/config";
+import { readOgAgreement } from "@/lib/og-agreement";
+import { siteOrigin } from "@/lib/site-url";
 import { verifyFunding, verifySettlement } from "@/lib/verify";
 import type { VerificationCheck, VerifyDisplay } from "@/lib/verify";
 import type { Frs1Agreement } from "@/lib/frs1-types";
 import { assetDisplay, formatBaseUnits } from "@/lib/display";
 import { isTransactionSignature } from "@/lib/signature";
 import { getMint } from "@solana/spl-token";
+import { VerifyProofCard } from "./verify-client";
 
 export const dynamic = "force-dynamic";
+
+/** Card-safe metadata for a verification receipt: recompute the same checks the
+ *  page does, then print only the stable facts a share can carry (amount, asset,
+ *  shortened recipient) — never live status or proof content. Any failure falls
+ *  back to the generic title so a share never 404s. */
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ tx: string }>;
+  searchParams: Promise<{ recipient?: string }>;
+}): Promise<Metadata> {
+  const { tx } = await params;
+  const query = await searchParams;
+  const config = readConfig();
+  const connection = getConnection();
+  let title = "Transaction verification";
+  let description =
+    "Recomputed from Solana devnet: this transaction funded or settled the agreement it names, and the money moved as agreed.";
+  let images: { url: string; width: number; height: number; alt: string }[] | undefined;
+  try {
+    const settlement = await verifySettlement(connection, config.programId, tx, undefined);
+    const payment = settlement.settlementKind === null
+      ? await verifyFunding(connection, config.programId, tx, undefined)
+      : null;
+    const facts = settlement.settlementKind !== null
+      ? settlement.facts
+      : payment?.facts ?? settlement.facts;
+    let card: { amountLine: string; recipientLine: string; recipient: string } | null = null;
+    if (facts.agreementPda !== "") {
+      card = await readOgAgreement(facts.agreementPda, query.recipient);
+    }
+    if (card !== null) {
+      title = `Verified: ${card.amountLine}`;
+      description =
+        `This transaction settled the agreement for ${card.amountLine} to ${card.recipient}.`;
+    }
+    const origin = siteOrigin();
+    const image =
+      origin === ""
+        ? null
+        : `${origin}/verify/${encodeURIComponent(tx)}/opengraph-image`;
+    images =
+      image === null
+        ? undefined
+        : [{ url: image, width: 1200, height: 630, alt: "Flint transaction verification" }];
+  } catch {
+    const origin = siteOrigin();
+    const image =
+      origin === ""
+        ? null
+        : `${origin}/verify/${encodeURIComponent(tx)}/opengraph-image`;
+    images =
+      image === null
+        ? undefined
+        : [{ url: image, width: 1200, height: 630, alt: "Flint transaction verification" }];
+  }
+  return {
+    title,
+    description,
+    openGraph: { title, description, images },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: images === undefined ? undefined : [images[0].url],
+    },
+  };
+}
 
 /** The FRS-1 object, rendered field by field. */
 function AgreementTable({
@@ -247,6 +320,11 @@ export default async function VerifyPage({
             : "Not verified: at least one check failed. That is the expected answer for a fabricated or unrelated signature."}
         </p>
         <ChecksTable checks={checks} />
+      </section>
+
+      <section className="flint-card" aria-labelledby="proof-heading">
+        <h2 id="proof-heading">The proof</h2>
+        <VerifyProofCard agreement={facts.agreement} />
       </section>
 
       <section className="flint-card" aria-labelledby="agreement-heading">
