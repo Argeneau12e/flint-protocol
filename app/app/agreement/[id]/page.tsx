@@ -1,177 +1,63 @@
 /**
- * Payment request page shell (Task 3, item 1).
+ * Payment request page shell (Task 3, item 1; server wrapper for Phase 2).
+ *
+ * The interactive page moved to `agreement-client.tsx` so this module stays a
+ * server component and can export `generateMetadata`: crawlers get a title,
+ * description and absolute preview image without ever touching a wallet.
+ * The metadata reads the agreement from chain for its stable facts (amount,
+ * asset) and falls back to the generic description on any failure.
  */
 
-"use client";
+import type { Metadata } from "next";
+import AgreementPageClient from "./agreement-client";
+import { siteOrigin } from "../../../lib/site-url";
+import { readOgAgreement } from "../../../lib/og-agreement";
 
-import { use, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { PublicKey } from "@solana/web3.js";
-import { getMint } from "@solana/spl-token";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useAgreement } from "@/lib/useAgreement";
-import { getBrowserConnection, useFlintWallet } from "@/lib/wallet";
-import { agreementPda } from "@/lib/flint-program";
-import { flintProgramId } from "@/lib/client-tx";
-import { AgreementBody } from "@/components/agreement-body";
+const DESCRIPTION = "Secured by Flint escrow on Solana. Pay with any Solana wallet.";
 
-const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-
-function uuidToBytesLocal(uuid: string): Buffer {
-  const hex = uuid.replace(/-/g, "");
-  const out = Buffer.alloc(16);
-  for (let i = 0; i < 16; i++) {
-    out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return out;
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ recipient?: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const query = await searchParams;
+  const origin = siteOrigin();
+  const image =
+    origin === "" ? null : `${origin}/agreement/${encodeURIComponent(id)}/opengraph-image`;
+  const images =
+    image === null
+      ? undefined
+      : [{ url: image, width: 1200, height: 630, alt: "Flint payment request" }];
+  const found = await readOgAgreement(id, query.recipient);
+  const title = found === null ? "Payment request" : `Payment request: ${found.amountLine}`;
+  return {
+    title,
+    description: DESCRIPTION,
+    openGraph: {
+      title,
+      description: DESCRIPTION,
+      images,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description: DESCRIPTION,
+      images: image === null ? undefined : [image],
+    },
+  };
 }
 
-interface Meta {
-  assetMint: string;
-  assetSymbol: string;
-  cluster: string;
-  siteUrl: string;
-}
-
-export default function AgreementPage({
+export default async function AgreementPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ recipient?: string }>;
 }) {
-  const { id } = use(params);
-  const query = use(searchParams);
-  const { address } = useFlintWallet();
-
-  const agreementAddress = useMemo(() => {
-    const recipientParam = query.recipient;
-    if (UUID_RE.test(id) && typeof recipientParam === "string" && recipientParam !== "") {
-      try {
-        const [pda] = agreementPda(
-          new PublicKey(recipientParam),
-          uuidToBytesLocal(id),
-          flintProgramId(),
-        );
-        return pda.toBase58();
-      } catch {
-        return null;
-      }
-    }
-    try {
-      return new PublicKey(id).toBase58();
-    } catch {
-      return null;
-    }
-  }, [id, query.recipient]);
-
-  const { agreement, viewer, state, reviewEndsAt, loading, error, refresh } = useAgreement(
-    agreementAddress ?? "",
-    address,
-  );
-
-  const [meta, setMeta] = useState<Meta | null>(null);
-  const [decimals, setDecimals] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetch("/api/meta")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((body) => {
-        if (!cancelled && body !== null && typeof body.assetMint === "string") {
-          setMeta(body as Meta);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (agreement === null) return;
-    let cancelled = false;
-    void getMint(getBrowserConnection(), new PublicKey(agreement.asset))
-      .then((mint) => {
-        if (!cancelled) setDecimals(mint.decimals);
-      })
-      .catch(() => {
-        if (!cancelled) setDecimals(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [agreement]);
-
-  if (agreementAddress === null) {
-    return (
-      <div className="flint-stack">
-        <header>
-          <p className="flint-eyebrow">Payment request</p>
-          <h1 className="flint-page-title">This link does not look right</h1>
-        </header>
-        <div className="flint-card flint-measure">
-          <p className="flint-note flint-error">
-            The address in the link is not a valid agreement address or share link.
-          </p>
-          <p style={{ marginTop: "var(--flint-space-4)" }}>
-            <Link href="/">Back to the Flint overview</Link>
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="flint-stack" aria-label="Loading agreement">
-        <Skeleton className="h-8 w-40" />
-        <Skeleton className="h-16 w-2/3" />
-        <div className="flint-pay-grid">
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-64 w-full" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error !== null || agreement === null || state === null) {
-    const message = error === null ? "" : error.message;
-    const notFound = error === null || /not found|no agreement|invalid/i.test(message);
-    return (
-      <div className="flint-stack">
-        <header>
-          <p className="flint-eyebrow">Payment request</p>
-          <h1 className="flint-page-title">
-            {notFound ? "Agreement not found" : "Could not load this agreement"}
-          </h1>
-        </header>
-        <div className="flint-card flint-measure">
-          <p className="flint-note flint-error">
-            {notFound
-              ? "No agreement exists at this address on devnet. Check the link and try again."
-              : "The agreement could not be read from devnet. Check your connection and try again."}
-          </p>
-          <p style={{ marginTop: "var(--flint-space-4)" }}>
-            <Link href="/">Back to the Flint overview</Link>
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <AgreementBody
-      agreement={agreement}
-      agreementPda={agreementAddress}
-      viewer={viewer}
-      state={state}
-      reviewEndsAt={reviewEndsAt}
-      decimals={decimals}
-      symbol={meta?.assetSymbol ?? "TST"}
-      cluster={meta?.cluster ?? "devnet"}
-      siteUrl={meta?.siteUrl ?? ""}
-      onChanged={refresh}
-    />
-  );
+  const { id } = await params;
+  const query = await searchParams;
+  return <AgreementPageClient id={id} recipient={query.recipient} />;
 }

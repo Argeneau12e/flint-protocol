@@ -6,6 +6,7 @@ import { FlintWalletProvider } from "@/components/wallet-provider";
 import { SiteNav } from "@/components/site-nav";
 import { ConnectButton } from "@/components/agreement-ui";
 import { CLUSTER } from "@/lib/solana";
+import { siteOrigin } from "../lib/site-url";
 
 /*
  * Fonts are self-hosted at build time by `next/font`, which is why the stylesheet
@@ -52,9 +53,21 @@ const mono = JetBrains_Mono({
  * like their wallet had disconnected on its own.
  */
 export const metadata: Metadata = {
+  metadataBase: siteOrigin() === "" ? undefined : new URL(siteOrigin()),
   title: "Flint — FRS-1 payment agreements",
   description:
     "Flint is an escrowed, verifiable Solana payment agreement (FRS-1). Devnet build.",
+  openGraph: {
+    title: "Flint — FRS-1 payment agreements",
+    description: "Create shareable payment requests. Receipts on-chain.",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "Flint" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Flint — FRS-1 payment agreements",
+    description: "Create shareable payment requests. Receipts on-chain.",
+    images: ["/opengraph-image"],
+  },
 };
 
 export default function RootLayout({
