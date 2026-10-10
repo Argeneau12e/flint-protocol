@@ -19,11 +19,13 @@ import {
   buildReleaseAfterReviewTransaction,
   buildReleaseTransaction,
   buildRefundTransaction,
+  buildResolveDisputeTransaction,
   buildSplitAfterArbiterTimeoutTransaction,
   serializeForClient,
   type ClaimDeliveryAccounts,
   type DisputeAccounts,
   type ReleaseAfterReviewAccounts,
+  type ResolveDisputeAccounts,
   type SplitAfterArbiterTimeoutAccounts,
 } from "./flint-program";
 import type { DisputeReason } from "./frs1-types";
@@ -121,6 +123,15 @@ export async function releaseAfterReviewTxBase64(
     programId,
     accounts,
   );
+  return serializeForClient(transaction);
+}
+
+export async function resolveDisputeTxBase64(
+  connection: Connection,
+  programId: PublicKey,
+  accounts: ResolveDisputeAccounts,
+): Promise<string> {
+  const transaction = await buildResolveDisputeTransaction(connection, programId, accounts);
   return serializeForClient(transaction);
 }
 

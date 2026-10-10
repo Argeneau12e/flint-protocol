@@ -226,6 +226,35 @@ export function escrowAta(asset: PublicKey, agreement: PublicKey): PublicKey {
 const AGREEMENT_CODER_KEY = "flintAgreement";
 
 /**
+ * Every agreement account owned by the program, with its address.
+ *
+ * Uses the Anchor account namespace (`program.account.flintAgreement.all()`)
+ * so enumeration rides on the program's own coder — a hand-rolled
+ * `getProgramAccounts` would re-implement the layout the coder already owns.
+ * No memcmp filter: the cluster holds few enough agreements that fetching all
+ * and filtering on status client-side is the honest read. A missing or
+ * unreadable program throws; the caller decides the message.
+ */
+export interface ListedAgreement {
+  address: PublicKey;
+  account: RawAgreement;
+}
+
+export async function listAgreementAccounts(
+  connection: Connection,
+  programId: PublicKey,
+): Promise<ListedAgreement[]> {
+  const program = getProgram(connection, programId);
+  const namespace = program.account as unknown as {
+    flintAgreement: {
+      all(): Promise<Array<{ publicKey: PublicKey; account: RawAgreement }>>;
+    };
+  };
+  const found = await namespace.flintAgreement.all();
+  return found.map((entry) => ({ address: entry.publicKey, account: entry.account }));
+}
+
+/**
  * Reads and decodes an agreement account, or `null` when it does not exist — which
  * is the normal state for a cancelled agreement, since `cancel` closes the account
  * (Section 4.6). A missing account is a fact, not an error.

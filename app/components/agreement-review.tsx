@@ -8,6 +8,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Countdown, MonoValue } from "@/components/payment-ui";
 import { ProofView } from "@/components/proof-view";
+import { VerifyFile } from "@/components/verify-file";
 import { DisputeDialog, reasonLabel } from "@/components/dispute-dialog";
 import { RefundButton, ReleaseButton } from "@/components/payment-actions";
 import { ReleaseAfterReviewButton } from "@/components/late-actions";
@@ -38,6 +39,7 @@ export function InReview(props: Props) {
         </p>
       )}
       <ProofView agreement={agreement} />
+      <VerifyFile evidenceRef={agreement.evidenceRef} onChainHash={agreement.evidenceHash} />
       {isPayer ? (
         <div className="flint-row">
           <Button type="button" variant="outline" onClick={() => setDisputeOpen(true)}>
@@ -117,6 +119,7 @@ export function DisputedState(props: Props) {
         </p>
       )}
       <ProofView agreement={agreement} />
+      <VerifyFile evidenceRef={agreement.evidenceRef} onChainHash={agreement.evidenceHash} />
       {pastDeadline && agreement.payerAddress !== null ? (
         <SplitButton
           agreementPda={props.agreementPda}
