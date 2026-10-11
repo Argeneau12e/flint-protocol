@@ -37,6 +37,7 @@ import { FeeLine, feeBaseUnitsOrNull } from "@/components/fee-line";
 import { MIN_AGREEMENT_WHOLE_TOKENS, wholeTokens } from "@/lib/fees";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFlintWallet, useTransactionAction } from "@/lib/wallet";
+import { ReviewWindowSelect } from "./review-window-select";
 
 /** The server's answer to a create request. */
 interface Created {
