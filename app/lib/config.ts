@@ -170,5 +170,41 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): AgentFlowConfi
   };
 }
 
+/** What the human flow needs: public settings only, never any keypair. */
+export interface HumanFlowConfig {
+  programId: PublicKey;
+  assetMint: PublicKey;
+  assetSymbol: string;
+}
+
+export function readHumanConfig(env: NodeJS.ProcessEnv = process.env): HumanFlowConfig {
+  const problems: string[] = [];
+
+  let programId = new PublicKey(DEFAULT_PROGRAM_ID);
+  if (env.FLINT_PROGRAM_ID) {
+    try {
+      programId = new PublicKey(env.FLINT_PROGRAM_ID);
+    } catch {
+      problems.push(
+        `FLINT_PROGRAM_ID is not a valid base58 public key: "${env.FLINT_PROGRAM_ID}"`,
+      );
+    }
+  }
+
+  const assetMint = readPubkey(env.FLINT_ASSET_MINT, "FLINT_ASSET_MINT", problems);
+
+  if (problems.length > 0) {
+    throw new ConfigError(problems);
+  }
+
+  return {
+    programId,
+    assetMint,
+    assetSymbol:
+      env.FLINT_ASSET_SYMBOL ??
+      (assetMint.toBase58() === USDC_DEVNET_MINT ? "USDC" : "TST"),
+  };
+}
+
 /** The cluster this build talks to — re-exported so config consumers need one import. */
 export const CONFIG_CLUSTER = CLUSTER;

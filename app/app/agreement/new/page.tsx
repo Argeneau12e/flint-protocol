@@ -26,7 +26,7 @@
  */
 
 import Link from "next/link";
-import { readConfig } from "@/lib/config";
+import { readHumanConfig } from "@/lib/config";
 import { CLUSTER, getConnection } from "@/lib/solana";
 import { getMint } from "@solana/spl-token";
 import { DEFAULT_CONDITION_DESCRIPTION } from "@/lib/flint-program";
@@ -54,13 +54,12 @@ const REVIEW_WINDOW_PRESETS = [
 
 export default async function NewAgreementPage() {
   let config = null;
-  let configError: string | null = null;
   let decimals: number | null = null;
   try {
-    config = readConfig();
+    config = readHumanConfig();
     decimals = (await getMint(getConnection(), config.assetMint)).decimals;
   } catch (error) {
-    configError = (error as Error).message;
+    console.error("create page unavailable:", error);
   }
 
   if (config === null) {
@@ -72,9 +71,7 @@ export default async function NewAgreementPage() {
         </header>
         <div className="flint-card flint-measure">
           <p className="flint-note flint-error">
-            This deployment is not configured, so agreements cannot be created.
-            <br />
-            <code>{configError}</code>
+            Payment requests are temporarily unavailable on this deployment.
           </p>
           <p style={{ marginTop: "var(--flint-space-4)" }}>
             <Link href="/">Back to the Flint overview</Link>
@@ -102,30 +99,35 @@ export default async function NewAgreementPage() {
         <h2 id="what-next">What happens after you share it</h2>
         <div className="flint-card">
           <ol className="flint-list flint-muted">
-            <li>A payer opens the Blink in a Solana wallet and approves it.</li>
+            <li>A payer opens your link in a Solana wallet and approves it.</li>
             <li>
               The exact amount moves into the agreement&rsquo;s own escrow account.
               The agreement becomes <code>funded</code>, and that wallet is recorded
               as the payer.
             </li>
             <li>
-              The payer releases the money to you by signing a confirmation. That
-              signature is the receipt, and it can be verified by anyone afterwards.
+              When the work is done, you mark it as delivered and attach proof: files,
+              links or a note. A fingerprint of that proof is recorded on-chain, and
+              the expiry stops applying.
             </li>
             <li>
-              If the expiry passes with no confirmation, the money goes back to the
-              payer instead — and anyone can trigger that refund, including you.
+              The payer reviews your proof and releases the funds, or raises a
+              dispute. If they do neither within the review window you chose, the
+              funds are released to you automatically.
+            </li>
+            <li>
+              If the expiry passes before you deliver, the payer can take the money
+              back, and anyone can trigger that refund.
             </li>
           </ol>
           <p
             className="flint-note"
             style={{ fontSize: "var(--flint-text-sm)", marginTop: "var(--flint-space-4)" }}
           >
-            <strong>About the condition:</strong> v1 enforces exactly one condition
-            type, <code>manual-confirmation</code> — the payer signs to release the
-            funds. There is no automated or oracle-checked condition in this build,
-            so nothing about the work itself is verified on chain. A receipt proves
-            the payment happened; it does not prove the work was delivered.
+            <strong>Why this protects you:</strong> the money is held in escrow, so the
+            payer cannot withdraw it after you deliver. Anyone can check your proof
+            against the on-chain record on the Verify page, and disputed agreements
+            are decided by the arbiter.
           </p>
         </div>
       </section>

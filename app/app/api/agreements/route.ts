@@ -22,7 +22,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { getMint } from "@solana/spl-token";
 import { getConnection } from "../../../lib/solana";
-import { readConfig, ConfigError } from "../../../lib/config";
+import { readHumanConfig, ConfigError } from "../../../lib/config";
 import {
   DEFAULT_CONDITION_DESCRIPTION,
   buildCreateTransaction,
@@ -48,15 +48,16 @@ function fail(message: string, status = 400): Response {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  let config;
-  try {
-    config = readConfig();
-  } catch (error) {
-    if (error instanceof ConfigError) {
-      return fail(`Flint is not configured: ${error.problems.join("; ")}`, 503);
+    let config;
+    try {
+      config = readHumanConfig();
+    } catch (error) {
+      if (error instanceof ConfigError) {
+        logInternalFailure("reading the deployment configuration", error);
+        return fail("Payment requests are temporarily unavailable on this deployment.", 503);
+      }
+      throw error;
     }
-    throw error;
-  }
 
   let body: Record<string, unknown>;
   try {
