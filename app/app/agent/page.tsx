@@ -108,11 +108,10 @@ export default async function AgentPage({
 }) {
   const { last } = await searchParams;
   let config = null;
-  let configError: string | null = null;
   try {
     config = readConfig();
   } catch (error) {
-    configError = (error as Error).message;
+    console.error("agent page unavailable:", error);
   }
   if (config === null) {
     return (
@@ -120,10 +119,7 @@ export default async function AgentPage({
         <h1 className="flint-page-title">Test agent</h1>
         <div className="flint-card flint-prose">
           <p className="flint-muted">
-            The agent harness is not configured on this machine.
-          </p>
-          <p>
-            <code>{configError}</code>
+            The agent demo is not enabled on this deployment.
           </p>
         </div>
       </div>
